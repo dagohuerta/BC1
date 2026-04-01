@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+src/retail_roi_model/__init__.py
+src/retail_roi_model/cli.py
+src/retail_roi_model/engine.py
+src/retail_roi_model.egg-info/PKG-INFO
+src/retail_roi_model.egg-info/SOURCES.txt
+src/retail_roi_model.egg-info/dependency_links.txt
+src/retail_roi_model.egg-info/entry_points.txt
+src/retail_roi_model.egg-info/requires.txt
+src/retail_roi_model.egg-info/top_level.txt
+tests/test_finance_helpers.py

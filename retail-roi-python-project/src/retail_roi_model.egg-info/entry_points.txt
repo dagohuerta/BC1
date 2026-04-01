@@ -1,0 +1,2 @@
+[console_scripts]
+retail-roi = retail_roi_model.cli:main
