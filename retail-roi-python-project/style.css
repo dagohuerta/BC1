@@ -87,7 +87,7 @@ div[data-testid="stExpander"] {
 
 /* Button Refinement */
 .stButton>button {
-    border-radius: 980px !important;
+    border-radius: 10px !important;
     /* Infinite pill */
     background-color: var(--apple-blue) !important;
     color: white !important;
@@ -112,12 +112,18 @@ th {
 /* Segmented Control Pill */
 .stRadio div[role="radiogroup"] {
     background-color: #323232 !important;
-    border-radius: 20px !important;
+    border-radius: 5px !important;
     padding: 2px !important;
     border: none !important;
+    padding-left: 15px !important;
+    padding-bottom: 5px;
+    padding-top: 5px;
 }
 
 .stRadio div[role="radiogroup"] div[aria-checked="true"] label {
     background-color: #636366 !important;
-    border-radius: 18px !important;
+    border-radius: 5px !important;
+    padding-left: 15px !important;
+    padding-bottom: 5px;
+    padding-top: 5px;
 }

@@ -79,8 +79,7 @@ def configure_investments():
     header_cols = st.columns(cols_def)
    # header_cols[0].write("**Categoría de Inversión**") no funciona AV
     for i in range(1, horizon + 1):
-        header_cols[i].write(f"**Año {i}**")
-        header_cols[i].align = "center"
+        header_cols[i].markdown(f"<div style='text-align: center'>**Año {i}**</div>", unsafe_allow_html=True)
     #st.divider() - Eliminado por av
         
     # Fila 1: Licencias
@@ -887,12 +886,15 @@ with main_tab:
         st.markdown('<div class="header-monday" style="font-size: 1.6rem; border-bottom: 5px solid var(--apple-blue);">ROI Strategist</div>', unsafe_allow_html=True)
         
         st.write("---")
-        if st.button("💾 Guardar Ejercicio", use_container_width=True, type="primary"):
-            save_exercise_dialog()
-            
-        if st.button("🏠 Ir al Dashboard", use_container_width=True):
+
+        if st.button("🏠 Home", use_container_width=True):
             st.session_state.app_mode = "dashboard"
             st.rerun()
+
+        if st.button("💾 Guardar", use_container_width=True, type="primary"):
+            save_exercise_dialog()
+            
+ 
 
         st.write("---")
         st.write("**Parámetros del Modelo**")
