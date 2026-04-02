@@ -27,6 +27,12 @@ def format_usd(val):
     if val is None: return "N/D"
     return f"${val:,.0f}" if abs(val) >= 1 else f"${val:,.2f}"
 
+def format_m(val):
+    if val is None: return "N/D"
+    if abs(val) >= 1_000_000:
+        return f"${val/1_000_000:,.1f} M"
+    return format_usd(val)
+
 def local_css(file_name):
     with open(file_name) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
@@ -36,6 +42,15 @@ try:
     local_css("style.css")
 except FileNotFoundError:
     pass
+
+# Mapeo de Racionales Profesionales
+RATIONALE_MAP = {
+    "sales": "Optimización de ingresos mediante mejor disponibilidad y previsión operativa coordinada.",
+    "inventory_reduction": "Reducción de capital inmovilizado y mejora en eficiencia de stock mediante visibilidad.",
+    "margin": "Protección y expansión de margen mediante optimización estratégica de precios y promociones.",
+    "labor": "Aumento de productividad del personal y eficiencia en operaciones de tienda/almacén.",
+    "logistics": "Optimización de costos logísticos y de transporte mediante una red inteligente."
+}
 
 # --- Función para mostrar el Reporte Ejecutivo ---
 @st.dialog("Reporte Ejecutivo de ROI", width="large")
@@ -51,14 +66,14 @@ def show_executive_report(results):
     # Métricas Principales en Cards Dark Elite
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        st.markdown(f"""<div class="monday-card"><div class="monday-card-label">VPN (NPV)</div><div class="monday-card-value">{format_usd(results['npv'])}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="monday-card"><div class="monday-card-label">VPN (NPV)</div><div class="monday-card-value">{format_m(results['npv'])}</div></div>""", unsafe_allow_html=True)
     with m2:
         st.markdown(f"""<div class="monday-card card-green"><div class="monday-card-label">TIR (IRR)</div><div class="monday-card-value">{results['irr'] if results['irr'] is not None else 'N/D'}%</div></div>""", unsafe_allow_html=True)
     with m3:
         st.markdown(f"""<div class="monday-card card-amber"><div class="monday-card-label">Payback</div><div class="monday-card-value">{results['payback'] or 'N/D'}</div></div>""", unsafe_allow_html=True)
     with m4:
         total_b = sum(results['total_benefit'])
-        st.markdown(f"""<div class="monday-card card-purple"><div class="monday-card-label">Total Beneficios</div><div class="monday-card-value">{format_usd(total_b)}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="monday-card card-purple"><div class="monday-card-label">Total Beneficios</div><div class="monday-card-value">{format_m(total_b)}</div></div>""", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -75,7 +90,7 @@ def show_executive_report(results):
         
         fig_traj.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", y=1.2))
         fig_traj.update_yaxes(tickprefix="$", tickformat=",.0f", gridcolor="#333")
-        st.plotly_chart(fig_traj, use_container_width=True)
+        st.plotly_chart(fig_traj, width="stretch")
 
     with g2:
         if results['selection']:
@@ -88,7 +103,40 @@ def show_executive_report(results):
             pie_colors = [neon_palette[0], neon_palette[4], neon_palette[5], neon_palette[2], neon_palette[1], neon_palette[3]]
             fig_pie.update_traces(marker=dict(colors=pie_colors), textinfo='percent', hovertemplate='%{label}<br>$%{value:,.0f}', textfont_size=14)
             fig_pie.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', showlegend=True, legend=dict(orientation="h", y=-0.2), margin=dict(l=0, r=0, t=0, b=0), height=400)
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width="stretch")
+
+    with st.expander("📝 Detalle Técnico de Beneficios y Racionales"):
+        st.write("Análisis detallado de la lógica de negocio aplicada por módulo.")
+        benefit_rows = []
+        for mod_name in results['selection']:
+            mod_data = results['module_results'].get(mod_name, {})
+            # Derivar racionales y porcentajes
+            impacts = []
+            if 'aspect_pcts' in results and mod_name in results['aspect_pcts']:
+                # Caso Manual: tenemos los porcentajes exactos
+                for aspect, pct in results['aspect_pcts'][mod_name].items():
+                    impacts.append(f"{aspect.replace('_',' ').title()}: {pct}%")
+            else:
+                # Caso Excel o genérico
+                impacts.append("Impacto según modelo estratégico")
+            
+            # Racional combinado basado en perfiles
+            racional = "Calculado según parámetros de la industria para retail."
+            if mod_name in st.session_state.module_profiles:
+                racional = " ".join([RATIONALE_MAP.get(a, "") for a in st.session_state.module_profiles[mod_name]])
+            
+            # El monto es la suma de los beneficios anuales para este módulo
+            total_monto = sum(mod_data.get('benefit', [0]))
+            
+            benefit_rows.append({
+                "Módulo / Beneficio": mod_name,
+                "Justificación (Racional)": racional,
+                "Porcentaje Aplicado": ", ".join(impacts),
+                "Monto Calculado (Total)": format_usd(total_monto)
+            })
+        
+        df_benefits = pd.DataFrame(benefit_rows)
+        st.table(df_benefits)
 
     with st.expander("📊 Ver Detalle Anual Proyectado"):
         st.write("Cifras proyectadas año con año (métricas transpuestas)")
@@ -103,7 +151,7 @@ def show_executive_report(results):
         
         df_t = detail_df.T
         df_t['Total'] = df_t.sum(axis=1)
-        st.table(df_t.applymap(format_usd))
+        st.table(df_t.map(format_usd))
 
     # --- Botón de Exportación Discreto ---
     try:
@@ -135,10 +183,10 @@ def show_executive_report(results):
         height = Inches(1)
         
         kpis = [
-            ("NPV", format_usd(results['npv'])), 
+            ("NPV", format_m(results['npv'])), 
             ("IRR", f"{results['irr']}%"), 
             ("Payback", results['payback']),
-            ("Total Beneficios", format_usd(sum(results['total_benefit'])))
+            ("Total Beneficios", format_m(sum(results['total_benefit'])))
         ]
         
         for label, val in kpis:
@@ -186,7 +234,7 @@ def show_executive_report(results):
                 data=pptx_buf,
                 file_name=f"ROI_Ejecutivo_{results['cliente']}.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True,
+                width="stretch",
                 help="Descargar este reporte en formato PowerPoint profesional"
             )
     except Exception as e:
@@ -575,6 +623,7 @@ with main_tab:
                     "irr": round(irr_value * 100.0, 2) if irr_value is not None else None,
                     "payback": payback,
                     "selection": module_selected,
+                    "aspect_pcts": module_benefits
                 }
 
             results = calc_manual_roi()

@@ -11,10 +11,12 @@
     --neon-blue: #00a3ff;
     --neon-green: #00e676;
     --neon-amber: #ffc107;
-    --pale-purple: #bb86fc;
+    --pale-purple: #ff8019;
 }
 
-html, body, [class*="css"] {
+html,
+body,
+[class*="css"] {
     font-family: 'Roboto', sans-serif !important;
     color: var(--dark-text) !important;
 }
@@ -53,13 +55,21 @@ html, body, [class*="css"] {
     font-size: 2.22rem;
     font-weight: 900;
     color: var(--dark-text);
-    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Color Accents for Dark Mode */
-.card-green { border-left-color: var(--neon-green) !important; }
-.card-amber { border-left-color: var(--neon-amber) !important; }
-.card-purple { border-left-color: var(--pale-purple) !important; }
+.card-green {
+    border-left-color: var(--neon-green) !important;
+}
+
+.card-amber {
+    border-left-color: var(--neon-amber) !important;
+}
+
+.card-purple {
+    border-left-color: var(--pale-purple) !important;
+}
 
 /* Vibrant Dark Buttons */
 .stButton>button {
@@ -102,6 +112,7 @@ table {
     border-collapse: collapse !important;
     background-color: var(--dark-surface);
 }
+
 th {
     background-color: #252d37 !important;
     color: var(--neon-blue) !important;
@@ -110,6 +121,7 @@ th {
     text-align: left !important;
     border-bottom: 2px solid var(--dark-border) !important;
 }
+
 td {
     padding: 12px !important;
     border-bottom: 1px solid #2d2d2d !important;
@@ -125,12 +137,16 @@ div[role="dialog"] {
 }
 
 /* Menus y Widgets de Streamlit */
-.stSelectbox, .stMultiSelect, .stSlider {
+.stSelectbox,
+.stMultiSelect,
+.stSlider {
     color: var(--dark-text) !important;
 }
 
 /* Contenedores de Información */
-.stInfo, .stSuccess, .stWarning {
+.stInfo,
+.stSuccess,
+.stWarning {
     background-color: #161b22 !important;
     border: 1px solid var(--dark-border) !important;
     color: var(--dark-text) !important;
