@@ -52,7 +52,38 @@ RATIONALE_MAP = {
     "logistics": "Optimización de costos logísticos y de transporte mediante una red inteligente."
 }
 
+def get_total_manual_investment():
+    # Sumar inversiones hasta el horizonte seleccionado
+    horizon = st.session_state.get('manual_horizon', 5)
+    total = 0.0
+    for i in range(1, horizon + 1):
+        inv = st.session_state.annual_investments.get(i, {'software': 0, 'impl': 0, 'extra': 0})
+        total += inv['software'] + inv['impl'] + inv['extra']
+    return total
+
 # --- Función para mostrar el Reporte Ejecutivo ---
+@st.dialog("Configuración de Inversiones Anuales", width="large")
+def configure_investments():
+    horizon = st.session_state.get('manual_horizon', 5)
+    st.write(f"Ingresa los montos de inversión proyectados para el horizonte de **{horizon} años**.")
+    
+    # Encabezados
+    c1, c2, c3, c4 = st.columns([1, 2, 2, 2])
+    c1.write("**Año**")
+    c2.write("**Licencias**")
+    c3.write("**Implementación**")
+    c4.write("**Adicional / Otros**")
+    
+    for i in range(1, horizon + 1):
+        cols = st.columns([1, 2, 2, 2])
+        cols[0].write(f"Año {i}")
+        st.session_state.annual_investments[i]['software'] = cols[1].number_input(f"Software Y{i}", min_value=0.0, value=st.session_state.annual_investments[i]['software'], label_visibility="collapsed", key=f"soft_{i}")
+        st.session_state.annual_investments[i]['impl'] = cols[2].number_input(f"Impl Y{i}", min_value=0.0, value=st.session_state.annual_investments[i]['impl'], label_visibility="collapsed", key=f"impl_{i}")
+        st.session_state.annual_investments[i]['extra'] = cols[3].number_input(f"Extra Y{i}", min_value=0.0, value=st.session_state.annual_investments[i]['extra'], label_visibility="collapsed", key=f"extra_{i}")
+    
+    if st.button("Guardar y Cerrar", type="primary", use_container_width=True):
+        st.rerun()
+
 @st.dialog("Reporte Ejecutivo de ROI", width="large")
 def show_executive_report(results):
     # Definir paleta Dark Mode Neon
@@ -153,92 +184,221 @@ def show_executive_report(results):
         df_t['Total'] = df_t.sum(axis=1)
         st.table(df_t.map(format_usd))
 
-    # --- Botón de Exportación Discreto ---
+    # --- Exportación PPTX Ejecutiva Premium ---
     try:
-        # Generar PPTX en memoria
-        prs = Presentation()
-        # Slide Título
-        slide = prs.slides.add_slide(prs.slide_layouts[6]) # Blind slide
-        
-        # Fondo degradado simulado con un rectángulo
         from pptx.enum.shapes import MSO_SHAPE
-        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(1.2))
-        fill = shape.fill
-        fill.solid()
-        fill.fore_color.rgb = RGBColor(31, 119, 180) # Azul corporativo
-        shape.line.fill.background()
-
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(8), Inches(1))
+        from pptx.enum.text import PP_ALIGN
+        
+        prs = Presentation()
+        # Definir Colores Corporativos
+        COLOR_BLUE = RGBColor(0, 163, 255)  # Neon Blue
+        COLOR_GREEN = RGBColor(0, 230, 118) # Neon Green
+        COLOR_DARK = RGBColor(14, 17, 23)   # Dark Background
+        COLOR_WHITE = RGBColor(255, 255, 255)
+        
+        # 1. Slide de Portada (Executive Cover)
+        slide_cover = prs.slides.add_slide(prs.slide_layouts[6])
+        # Fondo degradado simulado
+        rect = slide_cover.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+        rect.fill.solid()
+        rect.fill.fore_color.rgb = COLOR_DARK
+        rect.line.fill.background()
+        
+        # Título Principal
+        title_box = slide_cover.shapes.add_textbox(Inches(0.5), Inches(3), Inches(9), Inches(1.5))
         tf = title_box.text_frame
         p = tf.paragraphs[0]
-        p.text = f"Resumen Ejecutivo: {results['cliente']}"
-        p.font.size = Pt(28)
+        p.text = "PROYECCIÓN ESTRATÉGICA DE ROI"
+        p.font.size = Pt(44)
         p.font.bold = True
-        p.font.color.rgb = RGBColor(255, 255, 255)
-
-        # KPIs
-        left = Inches(0.5)
-        top = Inches(1.5)
-        width = Inches(2) # Ajustado para 4 KPIs
-        height = Inches(1)
+        p.font.color.rgb = COLOR_WHITE
+        p.alignment = PP_ALIGN.CENTER
         
-        kpis = [
-            ("NPV", format_m(results['npv'])), 
-            ("IRR", f"{results['irr']}%"), 
-            ("Payback", results['payback']),
-            ("Total Beneficios", format_m(sum(results['total_benefit'])))
+        # Subtítulo (Cliente)
+        sub_box = slide_cover.shapes.add_textbox(Inches(0.5), Inches(4.5), Inches(9), Inches(1))
+        tf = sub_box.text_frame
+        p = tf.paragraphs[0]
+        p.text = f"Análisis Preparado para: {results['cliente']} | {results['retailer_type']}"
+        p.font.size = Pt(20)
+        p.font.color.rgb = COLOR_BLUE
+        p.alignment = PP_ALIGN.CENTER
+
+        # 2. Resumen Financiero Ejecutivo (KPI Dashboard)
+        slide_kpi = prs.slides.add_slide(prs.slide_layouts[6])
+        # Header
+        header = slide_kpi.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(1))
+        header.fill.solid()
+        header.fill.fore_color.rgb = COLOR_BLUE
+        header.line.fill.background()
+        
+        title = slide_kpi.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(8), Inches(0.6))
+        tf = title.text_frame
+        p = tf.paragraphs[0]
+        p.text = "Métricas Clave de Retorno (Executive Summary)"
+        p.font.size = Pt(24)
+        p.font.bold = True
+        p.font.color.rgb = COLOR_WHITE
+        
+        # KPI Boxes (4 column layout)
+        kpi_list = [
+            ("NPV (Valor Presente)", format_m(results['npv'])),
+            ("IRR (Tasa Interna)", f"{results['irr']}%"),
+            ("Payback (Recuperación)", results['payback']),
+            ("Beneficio Total", format_m(sum(results['total_benefit'])))
         ]
         
-        for label, val in kpis:
-            box = slide.shapes.add_textbox(left, top, width, height)
-            tf = box.text_frame
-            p_label = tf.paragraphs[0]
-            p_label.text = label
-            p_label.font.size = Pt(11)
-            p_label.font.color.rgb = RGBColor(100, 100, 100)
+        left = Inches(0.5)
+        top = Inches(1.5)
+        width = Inches(2.1)
+        height = Inches(1.2)
+        
+        for name, val in kpi_list:
+            # Shape for background
+            box = slide_kpi.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+            box.fill.solid()
+            box.fill.fore_color.rgb = RGBColor(30, 30, 30)
+            box.line.color.rgb = COLOR_BLUE
             
-            p_val = tf.add_paragraph()
-            p_val.text = val
-            p_val.font.size = Pt(16)
-            p_val.font.bold = True
-            p_val.font.color.rgb = RGBColor(31, 119, 180)
-            left += Inches(2.2)
+            # Label
+            lbl = slide_kpi.shapes.add_textbox(left, top + Inches(0.15), width, Inches(0.3))
+            tf = lbl.text_frame
+            p = tf.paragraphs[0]
+            p.text = name
+            p.font.size = Pt(10)
+            p.font.color.rgb = COLOR_BLUE
+            p.alignment = PP_ALIGN.CENTER
+            
+            # Value
+            vbox = slide_kpi.shapes.add_textbox(left, top + Inches(0.5), width, Inches(0.5))
+            tf = vbox.text_frame
+            p = tf.paragraphs[0]
+            p.text = val
+            p.font.size = Pt(22)
+            p.font.bold = True
+            p.font.color.rgb = COLOR_WHITE
+            p.alignment = PP_ALIGN.CENTER
+            left += Inches(2.25)
 
-        # Gráfico
-        plt.style.use('ggplot')
-        fig, ax = plt.subplots(figsize=(8, 4))
+        # 3. Trayectoria de Beneficios (Financial Trajectory)
+        slide_traj = prs.slides.add_slide(prs.slide_layouts[6])
+        # Background
+        bg = slide_traj.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = COLOR_DARK
+        
+        # Chart logic
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(10, 5))
         years = list(range(1, results['years'] + 1))
-        ax.bar(years, results['total_benefit'], color='#2ca02c', alpha=0.6, label='Beneficios')
-        ax.bar(years, results['total_investment'], color='#d62728', alpha=0.6, label='Inversiones')
+        # Stylized Bars & Lines
+        ax.bar(years, results['total_benefit'], color='#00e676', alpha=0.8, label='Beneficios Anuales')
+        ax.bar(years, results['total_investment'], color='#ff5252', alpha=0.8, label='Inversiones')
         ax2 = ax.twinx()
-        ax2.plot(years, results['total_cumulative'], color='#1f77b4', linewidth=3, marker='o', label='Flujo Cumulado')
-        ax.legend(loc='upper left')
-        ax.set_title("Trayectoria Financiera")
+        ax2.plot(years, results['total_cumulative'], color='#00a3ff', linewidth=4, marker='o', markersize=10, label='Flujo Acumulado')
+        
+        ax.set_title("Evolución de Flujo de Caja y ROI", color='white', fontsize=16, pad=20)
+        ax.legend(loc='upper left', facecolor='#1e1e1e', edgecolor='#333')
+        ax.grid(axis='y', color='#333', linestyle='--')
         
         img_buf = io.BytesIO()
-        fig.savefig(img_buf, format='png', bbox_inches='tight')
+        fig.savefig(img_buf, format='png', bbox_inches='tight', dpi=150)
         img_buf.seek(0)
         plt.close(fig)
         
-        slide.shapes.add_picture(img_buf, Inches(0.5), Inches(3.0), width=Inches(8))
+        slide_traj.shapes.add_picture(img_buf, Inches(0.5), Inches(1.5), width=Inches(9))
 
+        # 4. Detalle de Racionales (Business Case Details)
+        slide_rac = prs.slides.add_slide(prs.slide_layouts[6])
+        # White background for readable data
+        title_box = slide_rac.shapes.add_textbox(Inches(0.2), Inches(0.2), Inches(9), Inches(0.6))
+        tf = title_box.text_frame
+        p = tf.paragraphs[0]
+        p.text = "Justificación Estratégica por Módulo"
+        p.font.size = Pt(28)
+        p.font.bold = True
+        
+        # Table
+        rows = len(results['selection']) + 1
+        cols = 3
+        table = slide_rac.shapes.add_table(rows, cols, Inches(0.5), Inches(1.2), Inches(9), Inches(4)).table
+        
+        # Headers
+        table.cell(0, 0).text = "Módulo Oracle"
+        table.cell(0, 1).text = "Principales Palancas de Valor"
+        table.cell(0, 2).text = "Beneficio Total"
+        
+        for k in range(3):
+            table.cell(0, k).fill.solid()
+            table.cell(0, k).fill.fore_color.rgb = COLOR_BLUE
+            table.cell(0, k).text_frame.paragraphs[0].font.color.rgb = COLOR_WHITE
+            table.cell(0, k).text_frame.paragraphs[0].font.bold = True
+
+        for idx, mod_name in enumerate(results['selection']):
+            mod_data = results['module_results'].get(mod_name, {})
+            # Derivar aspectos
+            impacts = []
+            if 'aspect_pcts' in results and mod_name in results['aspect_pcts']:
+                impacts = [f"{a.replace('_',' ').title()}" for a, p in results['aspect_pcts'][mod_name].items()]
+            
+            table.cell(idx+1, 0).text = mod_name
+            table.cell(idx+1, 1).text = ", ".join(impacts)
+            table.cell(idx+1, 2).text = format_usd(sum(mod_data.get('benefit', [0])))
+
+        # 5. Proyecciones Anualizadas (Full Data)
+        slide_table = prs.slides.add_slide(prs.slide_layouts[6])
+        title_box = slide_table.shapes.add_textbox(Inches(0.2), Inches(0.2), Inches(9), Inches(0.6))
+        title_box.text_frame.paragraphs[0].text = "Proyecciones Financieras Anualizadas ($ USD)"
+        title_box.text_frame.paragraphs[0].font.size = Pt(24)
+        
+        # Transposed table
+        detail_rows = ["Año "+str(i) for i in range(1, results['years'] + 1)]
+        detail_rows.append("Total")
+        
+        cols = results['years'] + 2 # Metrics + Years + Total
+        rows = 5 # Benefit, Inv, Net, Cum
+        table = slide_table.shapes.add_table(5, results['years'] + 2, Inches(0.2), Inches(1.5), Inches(9.6), Inches(2.5)).table
+        
+        metrics = ["Año", "Beneficio", "Inversión", "Flujo Neto", "Cumulado"]
+        for r, m in enumerate(metrics):
+            table.cell(r, 0).text = m
+            table.cell(r, 0).fill.solid()
+            table.cell(r, 0).fill.fore_color.rgb = RGBColor(240, 240, 240)
+            table.cell(r, 0).text_frame.paragraphs[0].font.bold = True
+            
+        for y in range(1, results['years']+1):
+            table.cell(0, y).text = f"Y{y}"
+            table.cell(1, y).text = format_usd(results['total_benefit'][y-1])
+            table.cell(2, y).text = format_usd(results['total_investment'][y-1])
+            table.cell(3, y).text = format_usd(results['total_cashflow'][y-1])
+            table.cell(4, y).text = format_usd(results['total_cumulative'][y-1])
+            
+        # Total Column
+        table.cell(0, results['years']+1).text = "Total"
+        table.cell(1, results['years']+1).text = format_usd(sum(results['total_benefit']))
+        table.cell(2, results['years']+1).text = format_usd(sum(results['total_investment']))
+        table.cell(3, results['years']+1).text = format_usd(sum(results['total_cashflow']))
+        table.cell(4, results['years']+1).text = "N/A"
+
+        # Guardar en memoria
         pptx_buf = io.BytesIO()
         prs.save(pptx_buf)
         pptx_buf.seek(0)
 
         st.write("---")
-        c1, c2 = st.columns([4, 1])
+        c1, c2 = st.columns([3, 1])
         with c2:
             st.download_button(
-                "📥 Exportar PPTX",
+                "📈 DESCARGAR PPTX EJECUTIVO",
                 data=pptx_buf,
-                file_name=f"ROI_Ejecutivo_{results['cliente']}.pptx",
+                file_name=f"ROI_Plan_Estrategico_{results['cliente']}.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                width="stretch",
-                help="Descargar este reporte en formato PowerPoint profesional"
+                use_container_width=True,
+                help="Generar el Business Case completo en formato PowerPoint profesional"
             )
     except Exception as e:
+        import traceback
         st.warning(f"Exportación PPTX no disponible: {e}")
+        st.caption(traceback.format_exc())
 
     st.info("Este reporte resume los beneficios proyectados basados en los parámetros ingresados y las curvas de adopción estándar de la industria.")
 
@@ -250,6 +410,13 @@ if 'aspect_ranges' not in st.session_state:
         "margin": (0, 10),
         "labor": (0, 12),
         "logistics": (0, 8),
+    }
+
+# Inicializar inversiones anuales en session_state si no existe
+if 'annual_investments' not in st.session_state:
+    st.session_state.annual_investments = {
+        i: {'software': 1200000.0 if i==1 else 0.0, 'impl': 800000.0 if i==1 else 0.0, 'extra': 0.0} 
+        for i in range(1, 6)
     }
 
 aspect_ranges = st.session_state.aspect_ranges
@@ -292,53 +459,105 @@ with config_tab:
 
     with config_subtab1:
         st.subheader("Gestión de Módulos Oracle")
-        col_add, col_list = st.columns([1, 2])
-
-        with col_add:
-            new_module = st.text_input("Nuevo módulo", key="new_module")
-            if st.button("Agregar módulo"):
+        
+        # --- Toolbar Dual-View (Agregar + Buscar + Vista) ---
+        with st.container():
+            t1, t2, t3 = st.columns([2, 2, 1])
+            with t1:
+                new_module = st.text_input("Nombre del módulo", key="new_module_compact", label_visibility="collapsed", placeholder="➕ Nuevo módulo Oracle...")
                 if new_module and new_module not in st.session_state.module_options:
-                    st.session_state.module_options.append(new_module)
-                    st.session_state.module_profiles[new_module] = []
-                    st.session_state.benefit_params[new_module] = {}
-                    st.success(f"Módulo {new_module} agregado")
-                    st.rerun()
-
-        with col_list:
-            for i, module in enumerate(st.session_state.module_options):
-                col_name, col_aspects, col_actions = st.columns([2, 3, 2])
-                with col_name:
-                    edited_name = st.text_input(f"Nombre {i}", module, key=f"name_{i}")
-                    if edited_name != module:
-                        # Renombrar
-                        idx = st.session_state.module_options.index(module)
-                        st.session_state.module_options[idx] = edited_name
-                        st.session_state.module_profiles[edited_name] = st.session_state.module_profiles.pop(module)
-                        st.session_state.benefit_params[edited_name] = st.session_state.benefit_params.pop(module)
+                    if st.button("Crear Módulo", key="btn_create_dual"):
+                        st.session_state.module_options.append(new_module)
+                        st.session_state.module_profiles[new_module] = []
+                        st.session_state.benefit_params[new_module] = {}
                         st.rerun()
+            with t2:
+                search_query = st.text_input("🔍 Buscar...", key="module_search_dual", label_visibility="collapsed", placeholder="🔍 Buscar módulos...")
+            with t3:
+                view_mode = st.radio("Vista", ["⊞", "☰"], index=1, horizontal=True, label_visibility="collapsed")
 
-                with col_aspects:
-                    current_aspects = st.session_state.module_profiles.get(module, [])
-                    selected_aspects = st.multiselect(f"Aspectos {i}", list(aspect_ranges.keys()), default=current_aspects, key=f"aspects_{i}")
-                    if selected_aspects != current_aspects:
-                        st.session_state.module_profiles[module] = selected_aspects
-                        # Actualizar benefit_params
-                        for aspect in selected_aspects:
-                            if aspect not in st.session_state.benefit_params[module]:
-                                min_val, max_val = aspect_ranges[aspect]
-                                st.session_state.benefit_params[module][aspect] = {"min": min_val + 1, "max": max_val - 1}
-                        # Remover aspectos no seleccionados
-                        for aspect in list(st.session_state.benefit_params[module].keys()):
-                            if aspect not in selected_aspects:
-                                del st.session_state.benefit_params[module][aspect]
+        # Mapeo de modo de vista
+        grid_mode = (view_mode == "⊞")
+        filtered_modules = [m for m in st.session_state.module_options if search_query.lower() in m.lower()]
+        
+        if not filtered_modules:
+            st.warning("No se encontraron resultados.")
+        else:
+            if grid_mode:
+                # Grid Optimizado (3 columnas)
+                cols_per_row = 3
+                for i in range(0, len(filtered_modules), cols_per_row):
+                    row_modules = filtered_modules[i:i + cols_per_row]
+                    cols = st.columns(cols_per_row)
+                    for j, module in enumerate(row_modules):
+                        with cols[j]:
+                            with st.container(border=True):
+                                n_aspects = len(st.session_state.module_profiles.get(module, []))
+                                st.markdown(f"**{module}** <small style='color:var(--dark-text-dim); float:right;'>{n_aspects} asp.</small>", unsafe_allow_html=True)
+                                
+                                current_aspects = st.session_state.module_profiles.get(module, [])
+                                selected_aspects = st.multiselect("Impacto", list(aspect_ranges.keys()), default=current_aspects, key=f"aspects_grid_{module}", label_visibility="collapsed")
+                                
+                                if selected_aspects != current_aspects:
+                                    st.session_state.module_profiles[module] = selected_aspects
+                                    for aspect in selected_aspects:
+                                        if aspect not in st.session_state.benefit_params[module]:
+                                            min_v, max_v = aspect_ranges[aspect]
+                                            st.session_state.benefit_params[module][aspect] = {"min": min_v + 1, "max": max_v - 1}
+                                    for a in list(st.session_state.benefit_params[module].keys()):
+                                        if a not in selected_aspects:
+                                            del st.session_state.benefit_params[module][a]
+                                    st.rerun()
 
-                with col_actions:
-                    if st.button(f"Eliminar {i}", key=f"del_{i}"):
-                        st.session_state.module_options.remove(module)
-                        del st.session_state.module_profiles[module]
-                        del st.session_state.benefit_params[module]
-                        st.success(f"Módulo {module} eliminado")
-                        st.rerun()
+                                with st.expander("Opciones", expanded=False):
+                                    new_name = st.text_input("Nombre", module, key=f"rename_grid_{module}", label_visibility="collapsed")
+                                    if new_name != module and new_name.strip() != "":
+                                        idx = st.session_state.module_options.index(module)
+                                        st.session_state.module_options[idx] = new_name
+                                        st.session_state.module_profiles[new_name] = st.session_state.module_profiles.pop(module)
+                                        st.session_state.benefit_params[new_name] = st.session_state.benefit_params.pop(module)
+                                        st.rerun()
+                                    if st.button("🗑️ Eliminar", key=f"del_grid_{module}", use_container_width=True):
+                                        st.session_state.module_options.remove(module)
+                                        del st.session_state.module_profiles[module]
+                                        del st.session_state.benefit_params[module]
+                                        st.rerun()
+            else:
+                # Vista de Lista (Filas compactas)
+                for module in filtered_modules:
+                    with st.container(border=True):
+                        c1, c2, c3 = st.columns([2, 3, 1])
+                        with c1:
+                            st.markdown(f"**{module}**")
+                            n_aspects = len(st.session_state.module_profiles.get(module, []))
+                            st.caption(f"{n_aspects} aspectos seleccionados")
+                        with c2:
+                            current_aspects = st.session_state.module_profiles.get(module, [])
+                            selected_aspects = st.multiselect("Impacto", list(aspect_ranges.keys()), default=current_aspects, key=f"aspects_list_{module}", label_visibility="collapsed")
+                            if selected_aspects != current_aspects:
+                                st.session_state.module_profiles[module] = selected_aspects
+                                for aspect in selected_aspects:
+                                    if aspect not in st.session_state.benefit_params[module]:
+                                        min_v, max_v = aspect_ranges[aspect]
+                                        st.session_state.benefit_params[module][aspect] = {"min": min_v + 1, "max": max_v - 1}
+                                for a in list(st.session_state.benefit_params[module].keys()):
+                                    if a not in selected_aspects:
+                                        del st.session_state.benefit_params[module][a]
+                                st.rerun()
+                        with c3:
+                            with st.popover("⚙️"):
+                                new_name = st.text_input("Renombrar módulo", module, key=f"rename_list_{module}")
+                                if new_name != module and new_name.strip() != "":
+                                    idx = st.session_state.module_options.index(module)
+                                    st.session_state.module_options[idx] = new_name
+                                    st.session_state.module_profiles[new_name] = st.session_state.module_profiles.pop(module)
+                                    st.session_state.benefit_params[new_name] = st.session_state.benefit_params.pop(module)
+                                    st.rerun()
+                                if st.button("🗑️ Eliminar Módulo", key=f"del_list_{module}", type="secondary", use_container_width=True):
+                                    st.session_state.module_options.remove(module)
+                                    del st.session_state.module_profiles[module]
+                                    del st.session_state.benefit_params[module]
+                                    st.rerun()
 
     with config_subtab2:
         st.subheader("Parámetros de Beneficio por Módulo y Aspecto")
@@ -359,7 +578,10 @@ with config_tab:
             st.write("---")
 
     with config_subtab3:
-        st.subheader("Gestión de Aspectos")
+        st.subheader("Configuración de Aspectos e Impacto")
+        st.info("Configura los rangos de impacto (min/max) para cada aspecto de negocio.")
+        
+        # (El manejo de aspectos se realiza en el bloque de abajo dinámicamente)
         
         # Agregar nuevo aspecto
         st.write("### Agregar nuevo aspecto")
@@ -436,6 +658,15 @@ with main_tab:
     st.markdown("### <span style='color:var(--neon-amber)'>Inteligencia de Negocio</span>", unsafe_allow_html=True)
     st.info("Bienvenido. Ejecuta el análisis de retorno de inversión en el nuevo entorno Obsidian Dark.")
 
+    if mode == "Entrada manual":
+        with st.sidebar:
+            st.write("---")
+            st.write("**Configuración de Inversión**")
+            if st.button("🛠️ Inversiones Anuales", width="stretch"):
+                configure_investments()
+            total_inv_setup = get_total_manual_investment()
+            st.caption(f"Total Configurado: {format_usd(total_inv_setup)}")
+
     if mode == "Carga Excel":
         st.caption("Carga el archivo .xlsm y genera el resumen de ROI y el JSON consolidado.")
         uploaded = st.file_uploader("Workbook Excel (.xlsm)", type=["xlsm", "xlsx"])
@@ -480,6 +711,10 @@ with main_tab:
 
     if mode == "Entrada manual":
         st.caption("Completa los datos clave y calcula ROI automáticamente sin usar Excel.")
+        
+        st.subheader("1. Horizonte de análisis")
+        st.info("Define el tiempo de retorno. Cambiar este valor actualizará automáticamente el configurador de inversiones.")
+        adoption_years = st.radio("Horizonte de análisis (años)", [3, 5], index=1, key="manual_horizon", horizontal=True)
 
         with st.form("manual_inputs"):
             st.subheader("1. Datos base")
@@ -498,7 +733,7 @@ with main_tab:
             with col3:
                 growth_rate = st.number_input("% crecimiento de ingresos anual", min_value=-100.0, max_value=100.0, value=3.0, step=0.1)
                 discount_rate = st.number_input("% tasa de descuento NPV", min_value=0.0, max_value=100.0, value=10.0, step=0.1)
-                adoption_years = st.radio("Horizonte de análisis (años)", [3, 5], index=1)
+                # adoption_years movido arriba del form para reactividad inmediata
 
             st.subheader("2. Selección de módulos Oracle")
             module_options = st.session_state.module_options
@@ -526,8 +761,11 @@ with main_tab:
                 st.info("Selecciona al menos un módulo para obtener resultados por módulo.")
 
             st.subheader("3. Inversiones por año")
-            software_fee = st.number_input("Licencia software - año 1", min_value=0.0, value=1_200_000.0, step=1000.0)
-            implementation_services = st.number_input("Servicios implementación - año 1", min_value=0.0, value=800_000.0, step=1000.0)
+            st.info("Utiliza el botón '🛠️ Inversiones Anuales' en la barra lateral para ajustar el cronograma multi-anual.")
+            
+            # Resumen visual discreto
+            total_inv_setup = get_total_manual_investment()
+            st.caption(f"**Total de Inversión**: {format_usd(total_inv_setup)}")
 
             submitted = st.form_submit_button("Calcular ROI manual")
 
@@ -558,10 +796,8 @@ with main_tab:
                     sga_year = rev_year * sga_pct / 100.0
                     base_oi_year = rev_year - cogs_year - sga_year
 
-                    if year == 1:
-                        total_investment = software_fee + implementation_services
-                    else:
-                        total_investment = 0.0
+                    inv_data = st.session_state.annual_investments.get(year, {'software': 0, 'impl': 0, 'extra': 0})
+                    total_investment = inv_data['software'] + inv_data['impl'] + inv_data['extra']
 
                     # Beneficios totales por aspecto
                     sales_benefit_total = rev_year * (aspect_totals["sales"] / 100.0)

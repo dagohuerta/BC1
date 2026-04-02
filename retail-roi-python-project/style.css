@@ -157,5 +157,116 @@ div[role="dialog"] {
     background-color: #161b22 !important;
     border: 1px solid var(--dark-border) !important;
     padding: 30px !important;
+    border-radius: 8px !important;}
+
+/* --- Module Management Specific --- */
+
+.module-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.module-card {
+    background-color: var(--dark-surface);
+    border: 1px solid var(--dark-border);
+    border-radius: 8px;
+    padding: 12px;
+    width: 100%; /* Columns handle width now */
+    border-top: 3px solid var(--neon-blue);
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.module-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--neon-blue);
+    box-shadow: 0 4px 12px rgba(0, 163, 255, 0.15);
+}
+
+.module-list-row {
+    background-color: var(--dark-surface);
+    border: 1px solid var(--dark-border);
+    border-radius: 6px;
+    padding: 8px 15px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background-color 0.2s;
+}
+
+.module-list-row:hover {
+    background-color: #252b33;
+    border-color: #444;
+}
+
+.module-card-header {
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.module-card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.add-section {
+    background-color: #161b22;
+    border: 1px solid var(--dark-border);
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.search-container {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: 15px;
+}
+
+/* --- Segmented Control (Mobile Style) --- */
+
+.stRadio div[role="radiogroup"] {
+    background-color: #1a1a1a !important;
+    border-radius: 12px !important;
+    padding: 3px !important;
+    border: 1px solid var(--dark-border) !important;
+    gap: 4px !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    width: fit-content !important;
+}
+
+.stRadio div[role="radiogroup"] label {
+    background-color: transparent !important;
     border-radius: 8px !important;
+    border: none !important;
+    padding: 6px 12px !important;
+    margin: 0 !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+    font-size: 1.1rem !important;
+}
+
+.stRadio div[role="radiogroup"] label:hover {
+    background-color: rgba(0, 163, 255, 0.1) !important;
+}
+
+.stRadio div[role="radiogroup"] div[aria-checked="true"] label {
+    background-color: var(--neon-blue) !important;
+    color: #000000 !important;
+    font-weight: 900 !important;
+}
+
+/* Hide Streamlit circles in the radio buttons */
+.stRadio div[role="radiogroup"] div[data-testid="stMarkdownContainer"] p {
+    margin-bottom: 0px !important;
+}
+.stRadio div[role="radiogroup"] input[type="radio"] {
+    display: none !important;
 }
