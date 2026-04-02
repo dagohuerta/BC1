@@ -5,11 +5,194 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
 import streamlit as st
 
 from retail_roi_model.engine import WorkbookDrivenRetailROIModel, outputs_to_jsonable, npv, irr, payback_period
 
-st.set_page_config(page_title="Retail ROI Model", layout="wide")
+import io
+import matplotlib.pyplot as plt
+try:
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+    from pptx.enum.text import PP_ALIGN
+    from pptx.dml.color import RGBColor
+except ImportError:
+    pass
+
+st.set_page_config(page_title="Strategic ROI Analysis", layout="wide")
+
+def format_usd(val):
+    if val is None: return "N/D"
+    return f"${val:,.0f}" if abs(val) >= 1 else f"${val:,.2f}"
+
+def local_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# Cargar Estilos Externos
+try:
+    local_css("style.css")
+except FileNotFoundError:
+    pass
+
+# --- Función para mostrar el Reporte Ejecutivo ---
+@st.dialog("Reporte Ejecutivo de ROI", width="large")
+def show_executive_report(results):
+    # Definir paleta Dark Mode Neon
+    neon_palette = ['#00a3ff', '#00e676', '#ffc107', '#ff5252', '#bb86fc', '#03dac6', '#cf6679']
+
+    st.markdown(f'<div class="header-monday">Reporte Ejecutivo de ROI</div>', unsafe_allow_html=True)
+    st.markdown(f"**Análisis Estratégico Obsidian:** {results['cliente']} | {results['retailer_type']}")
+    
+    st.write("---")
+    
+    # Métricas Principales en Cards Dark Elite
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.markdown(f"""<div class="monday-card"><div class="monday-card-label">VPN (NPV)</div><div class="monday-card-value">{format_usd(results['npv'])}</div></div>""", unsafe_allow_html=True)
+    with m2:
+        st.markdown(f"""<div class="monday-card card-green"><div class="monday-card-label">TIR (IRR)</div><div class="monday-card-value">{results['irr'] if results['irr'] is not None else 'N/D'}%</div></div>""", unsafe_allow_html=True)
+    with m3:
+        st.markdown(f"""<div class="monday-card card-amber"><div class="monday-card-label">Payback</div><div class="monday-card-value">{results['payback'] or 'N/D'}</div></div>""", unsafe_allow_html=True)
+    with m4:
+        total_b = sum(results['total_benefit'])
+        st.markdown(f"""<div class="monday-card card-purple"><div class="monday-card-label">Total Beneficios</div><div class="monday-card-value">{format_usd(total_b)}</div></div>""", unsafe_allow_html=True)
+
+    st.write("---")
+
+    # Layout de Gráficos (Dark Theme)
+    g1, g2 = st.columns([2, 1])
+    
+    with g1:
+        st.write("**Trayectoria de Beneficios**")
+        years_list = list(range(1, results['years'] + 1))
+        fig_traj = go.Figure()
+        fig_traj.add_trace(go.Bar(x=years_list, y=results['total_benefit'], name='Beneficios', marker_color=neon_palette[1])) # Neon Green
+        fig_traj.add_trace(go.Bar(x=years_list, y=results['total_investment'], name='Inversiones', marker_color='#444444')) # Stealth Gray
+        fig_traj.add_trace(go.Scatter(x=years_list, y=results['total_cumulative'], name='Flujo Acumulado', line=dict(color=neon_palette[0], width=5))) # Neon Blue
+        
+        fig_traj.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", y=1.2))
+        fig_traj.update_yaxes(tickprefix="$", tickformat=",.0f", gridcolor="#333")
+        st.plotly_chart(fig_traj, use_container_width=True)
+
+    with g2:
+        if results['selection']:
+            st.write("**Desglose de Valor**")
+            benefits_by_mod = [sum(results['module_results'][m]['benefit']) for m in results['selection']]
+            
+            # Pie Chart de Alto Contraste Neon
+            fig_pie = px.pie(values=benefits_by_mod, names=results['selection'], hole=0.5)
+            # Colores Neón variados
+            pie_colors = [neon_palette[0], neon_palette[4], neon_palette[5], neon_palette[2], neon_palette[1], neon_palette[3]]
+            fig_pie.update_traces(marker=dict(colors=pie_colors), textinfo='percent', hovertemplate='%{label}<br>$%{value:,.0f}', textfont_size=14)
+            fig_pie.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', showlegend=True, legend=dict(orientation="h", y=-0.2), margin=dict(l=0, r=0, t=0, b=0), height=400)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    with st.expander("📊 Ver Detalle Anual Proyectado"):
+        st.write("Cifras proyectadas año con año (métricas transpuestas)")
+        # Lógica de construcción de tabla
+        years_list = list(range(1, results['years'] + 1))
+        detail_df = pd.DataFrame({
+            'Beneficio': results['total_benefit'],
+            'Inversión': results['total_investment'],
+            'Flujo neto': results['total_cashflow'],
+            'Cumulado': results['total_cumulative']
+        }, index=[f"Año {i}" for i in years_list])
+        
+        df_t = detail_df.T
+        df_t['Total'] = df_t.sum(axis=1)
+        st.table(df_t.applymap(format_usd))
+
+    # --- Botón de Exportación Discreto ---
+    try:
+        # Generar PPTX en memoria
+        prs = Presentation()
+        # Slide Título
+        slide = prs.slides.add_slide(prs.slide_layouts[6]) # Blind slide
+        
+        # Fondo degradado simulado con un rectángulo
+        from pptx.enum.shapes import MSO_SHAPE
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(1.2))
+        fill = shape.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor(31, 119, 180) # Azul corporativo
+        shape.line.fill.background()
+
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(8), Inches(1))
+        tf = title_box.text_frame
+        p = tf.paragraphs[0]
+        p.text = f"Resumen Ejecutivo: {results['cliente']}"
+        p.font.size = Pt(28)
+        p.font.bold = True
+        p.font.color.rgb = RGBColor(255, 255, 255)
+
+        # KPIs
+        left = Inches(0.5)
+        top = Inches(1.5)
+        width = Inches(2) # Ajustado para 4 KPIs
+        height = Inches(1)
+        
+        kpis = [
+            ("NPV", format_usd(results['npv'])), 
+            ("IRR", f"{results['irr']}%"), 
+            ("Payback", results['payback']),
+            ("Total Beneficios", format_usd(sum(results['total_benefit'])))
+        ]
+        
+        for label, val in kpis:
+            box = slide.shapes.add_textbox(left, top, width, height)
+            tf = box.text_frame
+            p_label = tf.paragraphs[0]
+            p_label.text = label
+            p_label.font.size = Pt(11)
+            p_label.font.color.rgb = RGBColor(100, 100, 100)
+            
+            p_val = tf.add_paragraph()
+            p_val.text = val
+            p_val.font.size = Pt(16)
+            p_val.font.bold = True
+            p_val.font.color.rgb = RGBColor(31, 119, 180)
+            left += Inches(2.2)
+
+        # Gráfico
+        plt.style.use('ggplot')
+        fig, ax = plt.subplots(figsize=(8, 4))
+        years = list(range(1, results['years'] + 1))
+        ax.bar(years, results['total_benefit'], color='#2ca02c', alpha=0.6, label='Beneficios')
+        ax.bar(years, results['total_investment'], color='#d62728', alpha=0.6, label='Inversiones')
+        ax2 = ax.twinx()
+        ax2.plot(years, results['total_cumulative'], color='#1f77b4', linewidth=3, marker='o', label='Flujo Cumulado')
+        ax.legend(loc='upper left')
+        ax.set_title("Trayectoria Financiera")
+        
+        img_buf = io.BytesIO()
+        fig.savefig(img_buf, format='png', bbox_inches='tight')
+        img_buf.seek(0)
+        plt.close(fig)
+        
+        slide.shapes.add_picture(img_buf, Inches(0.5), Inches(3.0), width=Inches(8))
+
+        pptx_buf = io.BytesIO()
+        prs.save(pptx_buf)
+        pptx_buf.seek(0)
+
+        st.write("---")
+        c1, c2 = st.columns([4, 1])
+        with c2:
+            st.download_button(
+                "📥 Exportar PPTX",
+                data=pptx_buf,
+                file_name=f"ROI_Ejecutivo_{results['cliente']}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+                help="Descargar este reporte en formato PowerPoint profesional"
+            )
+    except Exception as e:
+        st.warning(f"Exportación PPTX no disponible: {e}")
+
+    st.info("Este reporte resume los beneficios proyectados basados en los parámetros ingresados y las curvas de adopción estándar de la industria.")
 
 # Rangos por aspecto - inicializar en session_state
 if 'aspect_ranges' not in st.session_state:
@@ -193,10 +376,19 @@ with config_tab:
             st.divider()
 
 with main_tab:
+    with st.sidebar:
+        st.markdown('<div class="header-monday" style="font-size: 1.6rem; border-bottom: 5px solid var(--neon-blue);">ROI Strategist</div>', unsafe_allow_html=True)
+        st.write("**Parámetros del Modelo**")
+        mode = st.radio("Método de entrada", ["Carga Excel", "Entrada manual"])
+        
+        st.write("---")
+        st.caption("v5.0.0 - Obsidian Dark UI")
+        
+    st.markdown('<div class="header-monday">Análisis de ROI Estratégico</div>', unsafe_allow_html=True)
+    st.markdown("### <span style='color:var(--neon-amber)'>Inteligencia de Negocio</span>", unsafe_allow_html=True)
+    st.info("Bienvenido. Ejecuta el análisis de retorno de inversión en el nuevo entorno Obsidian Dark.")
 
-    mode = st.radio("Selecciona modo de entrada", ["Archivo Excel", "Entrada manual"], index=1)
-
-    if mode == "Archivo Excel":
+    if mode == "Carga Excel":
         st.caption("Carga el archivo .xlsm y genera el resumen de ROI y el JSON consolidado.")
         uploaded = st.file_uploader("Workbook Excel (.xlsm)", type=["xlsm", "xlsx"])
 
@@ -210,24 +402,33 @@ with main_tab:
                     model = WorkbookDrivenRetailROIModel(temp_path)
                     outputs = model.run()
                     payload = outputs_to_jsonable(outputs)
+                    
+                    # Preparar data del reporte
+                    report_data = {
+                        "cliente": payload["summary_metrics"].get("client_name", "Cliente"),
+                        "retailer_type": payload["summary_metrics"].get("retailer_type", "Retailer"),
+                        "npv": payload["summary_metrics"].get("npv", 0),
+                        "irr": payload["summary_metrics"].get("irr_pct", 0),
+                        "payback": payload["summary_metrics"].get("payback_period"),
+                        "years": 5,
+                        "total_benefit": payload["annual_total"]["total_estimated_benefit"],
+                        "total_investment": payload["annual_total"]["total_investment"],
+                        "total_cumulative": payload["annual_total"]["cumulative_net_benefit"],
+                        "selection": [m["module_name"] for m in payload.get("module_results", []) if m.get("selected")],
+                        "module_results": {m["module_name"]: m for m in payload.get("module_results", [])}
+                    }
+                    # Mostrar reporte inmediatamente
+                    st.session_state.excel_results = report_data
+                    show_executive_report(report_data)
 
-                    st.subheader("Summary Metrics")
-                    st.json(payload["summary_metrics"])
-
-                    st.subheader("Annual Total")
-                    st.json(payload["annual_total"])
-
-                    st.subheader("Quarterly Total")
-                    st.json(payload["quarterly_total"])
-
-                    st.download_button(
-                        "Descargar JSON",
-                        data=json.dumps(payload, indent=2, ensure_ascii=False),
-                        file_name="roi_output.json",
-                        mime="application/json",
-                    )
                 except Exception as exc:
                     st.error(f"No fue posible calcular el modelo: {exc}")
+
+        if "excel_results" in st.session_state:
+            st.write("---")
+            if st.button("📊 Ver Reporte Ejecutivo (Excel)", use_container_width=True):
+                show_executive_report(st.session_state.excel_results)
+            st.info("Cálculo completado. El detalle completo está disponible en el Reporte Ejecutivo pop-up.")
 
     if mode == "Entrada manual":
         st.caption("Completa los datos clave y calcula ROI automáticamente sin usar Excel.")
@@ -377,106 +578,14 @@ with main_tab:
                 }
 
             results = calc_manual_roi()
+            
+            # Guardar en session_state y mostrar reporte inmediatamente
+            st.session_state.manual_results = results
+            show_executive_report(results)
 
-            case_tab, detail_tab = st.tabs(["Caso de negocios", "Detalle datos"])
+        if "manual_results" in st.session_state:
+            st.write("---")
+            st.success("Análisis completado. El detalle completo está disponible en el Reporte Ejecutivo pop-up.")
+            if st.button("🔍 Abrir Reporte Ejecutivo"):
+                show_executive_report(st.session_state.manual_results)
 
-            years = list(range(1, results['years'] + 1))
-
-            with case_tab:
-                st.subheader("KPIs ejecutivos")
-                st.metric("NPV (USD)", f"{results['npv']:,.0f}")
-                st.metric("IRR (%)", f"{results['irr'] if results['irr'] is not None else 'No definido'}")
-                st.metric("Payback estimado", results['payback'] or "Más de horizonte")
-
-                st.write("### Selección de módulos")
-                st.write(", ".join(results['selection']) if results['selection'] else "Ninguno seleccionado")
-
-                st.write("### Gráficos financieros")
-                total_df = pd.DataFrame({
-                    "Beneficio": results['total_benefit'],
-                    "Inversión": results['total_investment'],
-                    "Flujo neto": results['total_cashflow'],
-                    "Cumulado": results['total_cumulative'],
-                }, index=years)
-
-                st.line_chart(total_df[['Beneficio', 'Inversión', 'Flujo neto']])
-                st.bar_chart(total_df[['Cumulado']])
-
-                st.write("### Beneficios por módulo")
-                if results['selection']:
-                    mod_df = pd.DataFrame({
-                        m: results['module_results'][m]['benefit'] for m in results['selection']
-                    }, index=years)
-                    st.line_chart(mod_df)
-
-                    for mod in results['selection']:
-                        st.write(f"**{mod}** - Beneficio total: {sum(results['module_results'][mod]['benefit']):,.0f} USD, Cashflow total: {sum(results['module_results'][mod]['cashflow']):,.0f} USD")
-                else:
-                    st.write("No hay módulos seleccionados.")
-
-                try:
-                    import io
-                    import matplotlib.pyplot as plt
-                    from pptx import Presentation
-                    from pptx.util import Inches
-
-                    fig, ax = plt.subplots(figsize=(10, 4))
-                    ax.plot(years, total_df['Beneficio'], marker='o', label='Beneficio')
-                    ax.plot(years, total_df['Inversión'], marker='o', label='Inversión')
-                    ax.plot(years, total_df['Flujo neto'], marker='o', label='Flujo neto')
-                    ax.set_title('KPIs Totales por Año')
-                    ax.set_xlabel('Año')
-                    ax.set_ylabel('USD')
-                    ax.legend()
-                    ax.grid(True)
-
-                    img_buf = io.BytesIO()
-                    fig.savefig(img_buf, format='png', bbox_inches='tight')
-                    plt.close(fig)
-                    img_buf.seek(0)
-
-                    prs = Presentation()
-                    slide = prs.slides.add_slide(prs.slide_layouts[5])
-                    slide.shapes.title.text = 'Caso de negocios - Retail ROI'
-
-                    textbox = slide.shapes.add_textbox(Inches(0.5), Inches(1.1), Inches(9), Inches(2.5))
-                    tf = textbox.text_frame
-                    tf.text = f"Cliente: {results['cliente']} | Retailer: {results['retailer_type']} | Módulos: {', '.join(results['selection'])}"
-                    p = tf.add_paragraph(); p.text = f"NPV: {results['npv']:,.0f} USD"
-                    p = tf.add_paragraph(); p.text = f"IRR: {results['irr'] if results['irr'] is not None else 'No definido'} %"
-                    p = tf.add_paragraph(); p.text = f"Payback: {results['payback']}"
-
-                    slide.shapes.add_picture(img_buf, Inches(0.5), Inches(3.5), width=Inches(9))
-
-                    pptx_buf = io.BytesIO()
-                    prs.save(pptx_buf)
-                    pptx_buf.seek(0)
-
-                    st.download_button(
-                        "Exportar Caso de negocios a PPTX",
-                        data=pptx_buf,
-                        file_name="caso_negocios_roi.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    )
-                except ImportError:
-                    st.warning("Instala python-pptx y matplotlib para habilitar exportación PPTX")
-
-            with detail_tab:
-                st.subheader("Detalle anual")
-                detail_df = pd.DataFrame({
-                    'Beneficio': results['total_benefit'],
-                    'Inversión': results['total_investment'],
-                    'Flujo neto': results['total_cashflow'],
-                    'Cumulado': results['total_cumulative']
-                }, index=years)
-                st.table(detail_df)
-
-            st.subheader("Resultado JSON")
-            st.json(results)
-
-            st.download_button(
-                "Descargar resultado JSON",
-                data=json.dumps(results, indent=2, ensure_ascii=False),
-                file_name="roi_manual_output.json",
-                mime="application/json",
-            )

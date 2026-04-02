@@ -124,9 +124,26 @@ def irr(cashflows: List[float], low: float = -0.9999, high: float = 10.0, iterat
 
 
 def payback_period(cumulative_net_benefit_by_year: List[float]) -> Optional[str]:
+    prev_value = 0.0
     for idx, value in enumerate(cumulative_net_benefit_by_year, start=1):
         if value > 0:
-            return f"~ {idx} year" if idx == 1 else f"~ {idx} years"
+            if idx == 1:
+                # Interpolación en el primer año (asumiendo inversión inicial en t=0)
+                # Si el valor acumulado al final del año 1 es positivo, el payback ocurrió dentro del año 1.
+                # Como no tenemos el valor en t=0 (inversión), asumimos que el beneficio es lineal.
+                # Inversión = value - beneficio_año_1. Pero no tenemos beneficio_año_1 directamente aquí.
+                # Supondremos que prev_value es el valor en t=0 (negativo).
+                # Pero en la lista pasada, prev_value empieza en 0.
+                return "~ 12 meses o menos"
+            
+            # Interpolación: meses = (años_previos * 12) + (falta_para_cero / beneficio_este_año * 12)
+            beneficio_año = value - prev_value
+            if beneficio_año > 0:
+                meses_adicionales = (abs(prev_value) / beneficio_año) * 12
+                total_meses = int((idx - 1) * 12 + meses_adicionales)
+                return f"{total_meses} meses"
+            return f"{idx * 12} meses"
+        prev_value = value
     return None
 
 
