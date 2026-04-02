@@ -107,15 +107,20 @@ def show_executive_report(results):
     st.markdown(f'<div style="text-align: center; color: var(--apple-text-dim); margin-bottom: 50px; font-weight: 300; font-size: 1rem; letter-spacing: 0.05em;">{results["cliente"].upper()} &nbsp; • &nbsp; {results["retailer_type"].upper()}</div>', unsafe_allow_html=True)
     
     # Métricas Principales (Apple Product Cards style)
-    m1, m2, m3, m4 = st.columns(4)
+    total_b = sum(results['total_benefit'])
+    total_i = sum(results['total_investment'])
+    roi_pct = ((total_b - total_i) / total_i * 100) if total_i > 0 else 0
+    
+    m1, m2, m3, m4, m5 = st.columns(5)
     with m1:
         st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">Net Present Value</div><div class="monday-card-value">{format_m(results['npv'])}</div></div>""", unsafe_allow_html=True)
     with m2:
-        st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">Internal Rate</div><div class="monday-card-value" style="color: var(--apple-blue);">{results['irr'] if results['irr'] is not None else 'N/D'}%</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">ROI Total</div><div class="monday-card-value" style="color: #00e676;">{roi_pct:,.0f}%</div></div>""", unsafe_allow_html=True)
     with m3:
-        st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">Payback Period</div><div class="monday-card-value">{results['payback'] or 'N/D'}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">Internal Rate</div><div class="monday-card-value" style="color: var(--apple-blue);">{results['irr'] if results['irr'] is not None else 'N/D'}%</div></div>""", unsafe_allow_html=True)
     with m4:
-        total_b = sum(results['total_benefit'])
+        st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">Payback Period</div><div class="monday-card-value">{results['payback'] or 'N/D'}</div></div>""", unsafe_allow_html=True)
+    with m5:
         st.markdown(f"""<div class="monday-card" style="text-align: center;"><div class="monday-card-label">Total Potential</div><div class="monday-card-value">{format_m(total_b)}</div></div>""", unsafe_allow_html=True)
 
     st.write("")
@@ -125,14 +130,60 @@ def show_executive_report(results):
     g1, g2 = st.columns([1.6, 1])
     
     with g1:
-        st.markdown('<div style="font-weight: 500; font-size: 1.1rem; margin-bottom: 25px; color: var(--apple-text-dim);">TRAYECTORIA DE BENEFICIOS</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight: 500; font-size: 1.1rem; margin-bottom: 25px; color: var(--apple-text-dim);">FLUJO DE CAJA Y RETORNO ESTRATÉGICO</div>', unsafe_allow_html=True)
         years_list = list(range(1, results['years'] + 1))
-        fig_traj = go.Figure()
-        fig_traj.add_trace(go.Bar(x=years_list, y=results['total_benefit'], name='Beneficios', marker_color='#424245', marker_line_width=0))
-        fig_traj.add_trace(go.Scatter(x=years_list, y=results['total_cumulative'], name='Acumulado', line=dict(color='#2997ff', width=4), marker=dict(size=10)))
         
-        fig_traj.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=380, margin=dict(l=0, r=0, t=0, b=0), legend=dict(orientation="h", y=1.1, x=0))
-        fig_traj.update_xaxes(showgrid=False, zeroline=False)
+        # Calcular inversiones en negativo para la visualización
+        inv_negativas = [-inv for inv in results['total_investment']]
+        
+        fig_traj = go.Figure()
+        
+        # Barras de Inversión (Color rojo vibrante neon_palette[3])
+        fig_traj.add_trace(go.Bar(
+            x=years_list, 
+            y=inv_negativas, 
+            name='Inversión', 
+            marker_color='#ff5252', 
+            opacity=0.85,
+            hovertemplate='Año %{x}<br>Inversión: $%{y:,.0f}<extra></extra>'
+        ))
+
+        # Barras de Beneficio (Color verde neon_palette[1])
+        fig_traj.add_trace(go.Bar(
+            x=years_list, 
+            y=results['total_benefit'], 
+            name='Beneficio Potencial', 
+            marker_color='#00e676',
+            opacity=0.85,
+            hovertemplate='Año %{x}<br>Beneficio: $%{y:,.0f}<extra></extra>'
+        ))
+
+        # Línea de Flujo Acumulado con gradiente y marcadores definidos
+        fig_traj.add_trace(go.Scatter(
+            x=years_list, 
+            y=results['total_cumulative'], 
+            name='Flujo Neto Acumulado (ROI)', 
+            mode='lines+markers',
+            line=dict(color='#2997ff', width=4), 
+            marker=dict(size=10, color='white', line=dict(width=2, color='#2997ff')),
+            hovertemplate='Año %{x}<br>Acumulado: $%{y:,.0f}<extra></extra>'
+        ))
+        
+        # Layout profesional
+        fig_traj.update_layout(
+            barmode='relative',
+            template='plotly_dark',
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            height=380, 
+            margin=dict(l=0, r=0, t=0, b=0), 
+            legend=dict(orientation="h", y=1.12, x=0, font=dict(size=12)),
+            hovermode="x unified"
+        )
+        
+        fig_traj.update_xaxes(showgrid=False, zeroline=False, tickmode='linear', dtick=1)
+        # Línea 0 para enfatizar el breakeven
+        fig_traj.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.4)", line_width=1.5)
         fig_traj.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.05)', tickprefix="$", zeroline=False)
         st.plotly_chart(fig_traj, width="stretch")
 
@@ -158,7 +209,7 @@ def show_executive_report(results):
         detail_df = pd.DataFrame({
             'Beneficio': results['total_benefit'],
             'Inversión': results['total_investment'],
-            'Flujo neto': results['total_cashflow'],
+            'Flujo neto': results.get('total_cashflow', [b - i for b, i in zip(results['total_benefit'], results['total_investment'])]),
             'Cumulado': results['total_cumulative']
         }, index=[f"Año {i}" for i in years_list])
         
@@ -381,11 +432,23 @@ aspect_ranges = st.session_state.aspect_ranges
 if 'app_mode' not in st.session_state:
     st.session_state.app_mode = "dashboard"
 
+if 'editing_exercise_id' not in st.session_state:
+    st.session_state.editing_exercise_id = None
+
+if 'editing_exercise_name' not in st.session_state:
+    st.session_state.editing_exercise_name = ""
+
 @st.dialog("Guardar Ejercicio de ROI", width="small")
 def save_exercise_dialog():
-    st.write("Introduce un nombre para identificar este análisis.")
-    e_name = st.text_input("Nombre del Ejercicio", placeholder="Ej: Caso Walmart 2024 - Escenario Optimista")
-    if st.button("Confirmar Guardado", type="primary", use_container_width=True):
+    is_update = st.session_state.editing_exercise_id is not None
+    st.write("Introduce un nombre para identificar este análisis." if not is_update else "Actualiza el nombre si lo deseas.")
+    
+    default_name = st.session_state.editing_exercise_name if is_update else ""
+    e_name = st.text_input("Nombre del Ejercicio", value=default_name, placeholder="Ej: Caso Walmart 2024 - Escenario Optimista")
+    
+    btn_label = "Confirmar Actualización" if is_update else "Confirmar Guardado"
+    
+    if st.button(btn_label, type="primary", use_container_width=True):
         if e_name:
             # Recopilar todos los inputs actuales desde las claves de widgets
             data_to_save = {
@@ -403,11 +466,19 @@ def save_exercise_dialog():
                 'adoption_years': st.session_state.get('manual_horizon', 5),
                 'scenario_type': st.session_state.get('input_scenario_mode', "Base"),
                 'module_selected': st.session_state.get('input_module_selected', []),
-                'module_benefits': st.session_state.get('module_benefits', {}), # Estos se recalculan o cargan
+                'module_benefits': st.session_state.get('module_benefits', {}), 
                 'annual_investments': st.session_state.annual_investments
             }
-            db.save_exercise(data_to_save)
-            st.success(f"Ejercicio '{e_name}' guardado correctamente.")
+            
+            if is_update:
+                data_to_save['id'] = st.session_state.editing_exercise_id
+            
+            saved_id = db.save_exercise(data_to_save)
+            if not is_update:
+                st.session_state.editing_exercise_id = saved_id
+            st.session_state.editing_exercise_name = e_name
+            
+            st.success(f"Ejercicio '{e_name}' {'actualizado' if is_update else 'guardado'} correctamente.")
             st.rerun()
         else:
             st.error("Por favor, ingresa un nombre.")
@@ -435,6 +506,8 @@ def load_exercise_into_state(e_id):
         
         # También actualizar variables de cálculo
         st.session_state.annual_investments = ex['annual_investments']
+        st.session_state.editing_exercise_id = e_id
+        st.session_state.editing_exercise_name = ex['exercise_name']
         st.session_state.app_mode = "editor"
         st.rerun()
 
@@ -457,6 +530,8 @@ if st.session_state.app_mode == "dashboard":
                 st.session_state.input_growth_rate = 3.0
                 st.session_state.input_inventory = 25000000.0
                 st.session_state.input_module_selected = st.session_state.module_options[:2]
+                st.session_state.editing_exercise_id = None
+                st.session_state.editing_exercise_name = ""
                 st.session_state.app_mode = "editor"
                 st.rerun()
                 
@@ -486,7 +561,7 @@ st.title("Strategic ROI Analyst")
 main_tab, config_tab = st.tabs(["Cálculo", "Configuración"])
 
 with config_tab:
-    config_subtab1, config_subtab2, config_subtab3 = st.tabs(["Módulos Oracle", "Parámetros de Beneficio", "Aspectos"])
+    config_subtab1, config_subtab2, config_subtab3, config_subtab4 = st.tabs(["Módulos Oracle", "Parámetros de Beneficio", "Aspectos", "Fórmulas Financieras"])
 
     with config_subtab1:
         st.subheader("Gestión de Módulos Oracle")
@@ -684,6 +759,45 @@ with config_tab:
         if st.button("💾 Guardar Configuración en Base de Datos", type="primary", use_container_width=True):
             persist_state()
             st.success("Configuración sincronizada con la base de datos.")
+
+    with config_subtab4:
+        st.subheader("Glosario de Indicadores y Fórmulas")
+        st.info("Listado oficial de las métricas clave calculadas por el motor financiero del ROI Strategist, con su metodología y propósito.")
+        
+        indicators = [
+            {
+                "Indicador": "Net Present Value (NPV)", 
+                "Fórmula Algorítmica": "Σ [ Flujo Neto(t) / (1 + r)^t ] - Inversión Inicial", 
+                "Descripción y Propósito": "Valor actual de los flujos de efectivo futuros descontados por la tasa de riesgo (r = tasa de descuento). Indica el valor total de la riqueza creada a día de hoy."
+            },
+            {
+                "Indicador": "ROI Total", 
+                "Fórmula Algorítmica": "[(Beneficio Acumulado - Inversión Acumulada) / Inversión Acumulada] * 100", 
+                "Descripción y Propósito": "Retorno de Inversión sobre el horizonte del proyecto. Mide la rentabilidad global bruta generada por el capital invertido."
+            },
+            {
+                "Indicador": "Internal Rate of Return (IRR)", 
+                "Fórmula Algorítmica": "La tasa 'r' que hace que NPV = 0", 
+                "Descripción y Propósito": "Tasa de interés implícita que iguala el valor presente de los beneficios futuros con el costo de inversión. Sirve para comparar contra otras inversiones posibles."
+            },
+            {
+                "Indicador": "Payback Period", 
+                "Fórmula Algorítmica": "Año(n) de cruce + [ (Saldo a recuperar) / Flujo Neto (Año n+1) ]", 
+                "Descripción y Propósito": "Tiempo estandarizado (expresado en Años y Meses) requerido para recuperar íntegramente la inversión inicial con los beneficios netos operativos."
+            },
+            {
+                "Indicador": "Total Potential (Beneficio Neto)", 
+                "Fórmula Algorítmica": "Σ Beneficios Anuales de módulos parametrizados", 
+                "Descripción y Propósito": "Representa el impacto comercial bruto total de todos los módulos operando conjuntamente antes del descuento de la inversión."
+            },
+            {
+                "Indicador": "Flujo Neto Creciente Acumulado", 
+                "Fórmula Algorítmica": "Σ [ Beneficio(t) - Inversión(t) ] desde el Año 1 hasta t", 
+                "Descripción y Propósito": "Balance entre la salida y entrada de efectivo, utilizado para determinar el marco de autofinaciamiento y trazar la gráfica de Break-even."
+            }
+        ]
+        
+        st.table(pd.DataFrame(indicators))
 
 with main_tab:
     with st.sidebar:

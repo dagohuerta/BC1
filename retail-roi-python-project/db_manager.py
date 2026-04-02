@@ -167,21 +167,43 @@ class DatabaseManager:
         cursor = conn.cursor()
         try:
             placeholder = "%s" if self.db_type == "mysql" else "?"
+            exercise_id = data.get('id')
             
-            # Insert main exercise record
-            cursor.execute(f"""
-                INSERT INTO exercises (exercise_name, client_name, retailer_type, net_revenue, growth_rate, 
-                inventory, carrying_cost, cogs_pct, sga_pct, tax_rate, discount_rate, adoption_years, scenario_type)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 
-                        {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 
-                        {placeholder}, {placeholder}, {placeholder})
-            """, (
-                data['exercise_name'], data['client_name'], data['retailer_type'], data['net_revenue'],
-                data['growth_rate'], data['inventory'], data['carrying_cost'], data['cogs_pct'],
-                data['sga_pct'], data['tax_rate'], data['discount_rate'], data['adoption_years'], data['scenario_type']
-            ))
-            
-            exercise_id = cursor.lastrowid
+            if exercise_id:
+                # Update main exercise record
+                cursor.execute(f"""
+                    UPDATE exercises SET 
+                        exercise_name = {placeholder}, client_name = {placeholder}, retailer_type = {placeholder}, 
+                        net_revenue = {placeholder}, growth_rate = {placeholder}, inventory = {placeholder}, 
+                        carrying_cost = {placeholder}, cogs_pct = {placeholder}, sga_pct = {placeholder}, 
+                        tax_rate = {placeholder}, discount_rate = {placeholder}, adoption_years = {placeholder}, 
+                        scenario_type = {placeholder}
+                    WHERE id = {placeholder}
+                """, (
+                    data['exercise_name'], data['client_name'], data['retailer_type'], data['net_revenue'],
+                    data['growth_rate'], data['inventory'], data['carrying_cost'], data['cogs_pct'],
+                    data['sga_pct'], data['tax_rate'], data['discount_rate'], data['adoption_years'], 
+                    data['scenario_type'], exercise_id
+                ))
+                
+                # Clean up related tables for re-insertion
+                cursor.execute(f"DELETE FROM exercise_modules WHERE exercise_id = {placeholder}", (exercise_id,))
+                cursor.execute(f"DELETE FROM exercise_benefits WHERE exercise_id = {placeholder}", (exercise_id,))
+                cursor.execute(f"DELETE FROM exercise_investments WHERE exercise_id = {placeholder}", (exercise_id,))
+            else:
+                # Insert main exercise record
+                cursor.execute(f"""
+                    INSERT INTO exercises (exercise_name, client_name, retailer_type, net_revenue, growth_rate, 
+                    inventory, carrying_cost, cogs_pct, sga_pct, tax_rate, discount_rate, adoption_years, scenario_type)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 
+                            {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 
+                            {placeholder}, {placeholder}, {placeholder})
+                """, (
+                    data['exercise_name'], data['client_name'], data['retailer_type'], data['net_revenue'],
+                    data['growth_rate'], data['inventory'], data['carrying_cost'], data['cogs_pct'],
+                    data['sga_pct'], data['tax_rate'], data['discount_rate'], data['adoption_years'], data['scenario_type']
+                ))
+                exercise_id = cursor.lastrowid
             
             # Insert modules
             for mod in data['module_selected']:
