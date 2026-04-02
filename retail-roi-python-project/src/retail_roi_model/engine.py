@@ -134,7 +134,7 @@ def payback_period(cumulative_net_benefit_by_year: List[float]) -> Optional[str]
                 # Inversión = value - beneficio_año_1. Pero no tenemos beneficio_año_1 directamente aquí.
                 # Supondremos que prev_value es el valor en t=0 (negativo).
                 # Pero en la lista pasada, prev_value empieza en 0.
-                return "~ 12 meses o menos"
+                return "~ 12 meses"
             
             # Interpolación: meses = (años_previos * 12) + (falta_para_cero / beneficio_este_año * 12)
             beneficio_año = value - prev_value

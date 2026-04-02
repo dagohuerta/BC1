@@ -55,14 +55,7 @@ try:
 except FileNotFoundError:
     pass
 
-# Mapeo de Racionales Profesionales
-RATIONALE_MAP = {
-    "sales": "Optimización de ingresos mediante mejor disponibilidad y previsión operativa coordinada.",
-    "inventory_reduction": "Reducción de capital inmovilizado y mejora en eficiencia de stock mediante visibilidad.",
-    "margin": "Protección y expansión de margen mediante optimización estratégica de precios y promociones.",
-    "labor": "Aumento de productividad del personal y eficiencia en operaciones de tienda/almacén.",
-    "logistics": "Optimización de costos logísticos y de transporte mediante una red inteligente."
-}
+
 
 def get_total_manual_investment():
     # Sumar inversiones hasta el horizonte seleccionado
@@ -74,27 +67,55 @@ def get_total_manual_investment():
     return total
 
 # --- Función para mostrar el Reporte Ejecutivo ---
-@st.dialog("Configuración de Inversiones Anuales", width="large")
+@st.dialog("Inversiones", width="large")
 def configure_investments():
     horizon = st.session_state.get('manual_horizon', 5)
     st.write(f"Ingresa los montos de inversión proyectados para el horizonte de **{horizon} años**.")
     
-    # Encabezados
-    c1, c2, c3, c4 = st.columns([1, 2, 2, 2])
-    c1.write("**Año**")
-    c2.write("**Licencias**")
-    c3.write("**Implementación**")
-    c4.write("**Adicional / Otros**")
+    # Vista Transpuesta: Años en columnas horizontales
+    cols_def = [1.5] + [1] * horizon
     
+    # Fila de Encabezados (Años)
+    header_cols = st.columns(cols_def)
+   # header_cols[0].write("**Categoría de Inversión**") no funciona AV
     for i in range(1, horizon + 1):
-        cols = st.columns([1, 2, 2, 2])
-        cols[0].write(f"Año {i}")
-        st.session_state.annual_investments[i]['software'] = cols[1].number_input(f"Software Y{i}", min_value=0.0, value=float(st.session_state.annual_investments[i]['software']), label_visibility="collapsed", key=f"soft_{i}")
-        st.session_state.annual_investments[i]['impl'] = cols[2].number_input(f"Impl Y{i}", min_value=0.0, value=float(st.session_state.annual_investments[i]['impl']), label_visibility="collapsed", key=f"impl_{i}")
-        st.session_state.annual_investments[i]['extra'] = cols[3].number_input(f"Extra Y{i}", min_value=0.0, value=float(st.session_state.annual_investments[i]['extra']), label_visibility="collapsed", key=f"extra_{i}")
+        header_cols[i].write(f"**Año {i}**")
+        header_cols[i].align = "center"
+    #st.divider() - Eliminado por av
+        
+    # Fila 1: Licencias
+    s_cols = st.columns(cols_def)
+    s_cols[0].write("Licencias (Software)")
+    for i in range(1, horizon + 1):
+        val = float(st.session_state.annual_investments.get(i, {}).get('software', 0.0))
+        s_cols[i].number_input(f"Soft Y{i}", min_value=0.0, value=val, label_visibility="collapsed", key=f"cfg_soft_{i}")
+        
+    # Fila 2: Implementación
+    i_cols = st.columns(cols_def)
+    i_cols[0].write("Implementación")
+    for i in range(1, horizon + 1):
+        val = float(st.session_state.annual_investments.get(i, {}).get('impl', 0.0))
+        i_cols[i].number_input(f"Impl Y{i}", min_value=0.0, value=val, label_visibility="collapsed", key=f"cfg_impl_{i}")
+        
+    # Fila 3: Adicional / Otros
+    e_cols = st.columns(cols_def)
+    e_cols[0].write("Adicional / Otros")
+    for i in range(1, horizon + 1):
+        val = float(st.session_state.annual_investments.get(i, {}).get('extra', 0.0))
+        e_cols[i].number_input(f"Extra Y{i}", min_value=0.0, value=val, label_visibility="collapsed", key=f"cfg_extra_{i}")
     
-    if st.button("Guardar y Cerrar", type="primary", use_container_width=True):
-        persist_state()
+    st.write("")
+    if st.button("Guardar en Base de Datos Principal y Cerrar", type="primary", use_container_width=True):
+        # Forzamos la captura explícita desde los Session State keys antes de enviar a db_manager
+        # Esto soluciona la falla de registro en cache de forms/dialogos
+        for i in range(1, horizon + 1):
+            if i not in st.session_state.annual_investments:
+                st.session_state.annual_investments[i] = {}
+            st.session_state.annual_investments[i]['software'] = float(st.session_state.get(f"cfg_soft_{i}", 0.0))
+            st.session_state.annual_investments[i]['impl'] = float(st.session_state.get(f"cfg_impl_{i}", 0.0))
+            st.session_state.annual_investments[i]['extra'] = float(st.session_state.get(f"cfg_extra_{i}", 0.0))
+            
+        persist_state() # Guarda toda la maestra configuración
         st.rerun()
 
 @st.dialog("Reporte Ejecutivo de ROI", width="large")
@@ -136,55 +157,98 @@ def show_executive_report(results):
         # Calcular inversiones en negativo para la visualización
         inv_negativas = [-inv for inv in results['total_investment']]
         
+        # Calcular flujo de caja descontado para ilustrar trayectoria hacia el NPV
+        tasa_desc = float(st.session_state.get('input_discount_rate', 10.0)) / 100
+        dcf_acumulado = []
+        dcf_actual = 0
+        for y, (b, i) in enumerate(zip(results['total_benefit'], results['total_investment']), 1):
+            flujo_neto = b - i
+            flujo_neto_descontado = flujo_neto / ((1 + tasa_desc) ** y)
+            dcf_actual += flujo_neto_descontado
+            dcf_acumulado.append(dcf_actual)
+        
         fig_traj = go.Figure()
         
-        # Barras de Inversión (Color rojo vibrante neon_palette[3])
+        # Barras de Inversión (hacia abajo)
         fig_traj.add_trace(go.Bar(
             x=years_list, 
             y=inv_negativas, 
-            name='Inversión', 
+            name='Inversión Anual', 
             marker_color='#ff5252', 
             opacity=0.85,
             hovertemplate='Año %{x}<br>Inversión: $%{y:,.0f}<extra></extra>'
         ))
 
-        # Barras de Beneficio (Color verde neon_palette[1])
+        # Barras de Beneficio (hacia arriba)
         fig_traj.add_trace(go.Bar(
             x=years_list, 
             y=results['total_benefit'], 
-            name='Beneficio Potencial', 
+            name='Beneficio Bruto', 
             marker_color='#00e676',
             opacity=0.85,
             hovertemplate='Año %{x}<br>Beneficio: $%{y:,.0f}<extra></extra>'
         ))
 
-        # Línea de Flujo Acumulado con gradiente y marcadores definidos
+        # Línea de Flujo Acumulado Nominal
         fig_traj.add_trace(go.Scatter(
             x=years_list, 
             y=results['total_cumulative'], 
-            name='Flujo Neto Acumulado (ROI)', 
-            mode='lines+markers',
-            line=dict(color='#2997ff', width=4), 
-            marker=dict(size=10, color='white', line=dict(width=2, color='#2997ff')),
-            hovertemplate='Año %{x}<br>Acumulado: $%{y:,.0f}<extra></extra>'
+            name='Flujo Neto Nominal (Sin descontar)', 
+            mode='lines+markers+text',
+            text=["" for _ in range(len(years_list)-1)] + [f"Nominal: ${results['total_cumulative'][-1]:,.0f}"],
+            textposition="top left",
+            textfont=dict(color='#2997ff', size=12, family="Arial"),
+            line=dict(color='#2997ff', width=2, dash='dot'), 
+            marker=dict(size=7, color='white', line=dict(width=1, color='#2997ff')),
+            hovertemplate='Año %{x}<br>Acumulado Nominal: $%{y:,.0f}<extra></extra>'
+        ))
+
+        # Línea NPV (Flujo Descontado Acumulado) - Clave para un financiero
+        fig_traj.add_trace(go.Scatter(
+            x=years_list, 
+            y=dcf_acumulado, 
+            name='NPV Acumulado', 
+            mode='lines+markers+text',
+            text=["" for _ in range(len(years_list)-1)] + [f"NPV: ${dcf_acumulado[-1]:,.0f}"],
+            textposition="top left",
+            textfont=dict(color='#ffc107', size=13, family="Arial"),
+            line=dict(color='#ffc107', width=4), 
+            marker=dict(size=10, color='white', line=dict(width=2, color='#ffc107')),
+            hovertemplate='Año %{x}<br>NPV Acumulado: $%{y:,.0f}<extra></extra>'
         ))
         
         # Layout profesional
         fig_traj.update_layout(
-            barmode='relative',
+            barmode='group',
             template='plotly_dark',
             paper_bgcolor='rgba(0,0,0,0)', 
             plot_bgcolor='rgba(0,0,0,0)', 
-            height=380, 
+            height=420, 
             margin=dict(l=0, r=0, t=0, b=0), 
-            legend=dict(orientation="h", y=1.12, x=0, font=dict(size=12)),
+            legend=dict(orientation="h", y=1.12, x=0, font=dict(size=11)),
             hovermode="x unified"
         )
         
         fig_traj.update_xaxes(showgrid=False, zeroline=False, tickmode='linear', dtick=1)
-        # Línea 0 para enfatizar el breakeven
-        fig_traj.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.4)", line_width=1.5)
-        fig_traj.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.05)', tickprefix="$", zeroline=False)
+        # Rango inteligente para el eje Y: Forzar algo de espacio negativo si es muy pequeño para preservar el comparativo
+        todos_los_valores = results['total_benefit'] + inv_negativas + results['total_cumulative'] + dcf_acumulado
+        max_v = max(todos_los_valores) if todos_los_valores else 1000
+        min_v = min(todos_los_valores) if todos_los_valores else -1000
+        # Asegurarnos de que haya al menos un 30% de espacio visual abajo si el beneficio es muy grande y la inversión chica.
+        if abs(min_v) < (max_v * 0.3):
+            rango_min = -(max_v * 0.3)
+        else:
+            rango_min = min_v * 1.1
+            
+        fig_traj.update_yaxes(
+            showgrid=True, 
+            gridcolor='rgba(255,255,255,0.05)', 
+            tickprefix="$", 
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor='rgba(255,255,255,0.6)',
+            range=[rango_min, max_v * 1.1]
+        )
         st.plotly_chart(fig_traj, width="stretch")
 
     with g2:
@@ -229,7 +293,7 @@ def show_executive_report(results):
                     impacts.append(f"{aspect.replace('_',' ').title()}: {pct}%")
             racional = "Calculado según parámetros de industria."
             if mod_name in st.session_state.module_profiles:
-                racional = " ".join([RATIONALE_MAP.get(a, "") for a in st.session_state.module_profiles[mod_name]])
+                racional = " ".join([st.session_state.aspect_ranges.get(a, {}).get("rationale", "") for a in st.session_state.module_profiles[mod_name]])
             total_monto = sum(mod_data.get('benefit', [0]))
             benefit_rows.append({
                 "Módulo": mod_name,
@@ -364,11 +428,11 @@ if 'aspect_ranges' not in st.session_state:
         st.session_state.aspect_ranges = db_aspects
     else:
         st.session_state.aspect_ranges = {
-            "sales": (0, 20),
-            "inventory_reduction": (0, 15),
-            "margin": (0, 10),
-            "labor": (0, 12),
-            "logistics": (0, 8),
+            "sales": {"min": 0, "max": 20, "rationale": "Optimización de ingresos mediante mejor disponibilidad y previsión operativa coordinada."},
+            "inventory_reduction": {"min": 0, "max": 15, "rationale": "Reducción de capital inmovilizado y mejora en eficiencia de stock mediante visibilidad."},
+            "margin": {"min": 0, "max": 10, "rationale": "Protección y expansión de margen mediante optimización estratégica de precios y promociones."},
+            "labor": {"min": 0, "max": 12, "rationale": "Aumento de productividad del personal y eficiencia en operaciones de tienda/almacén."},
+            "logistics": {"min": 0, "max": 8, "rationale": "Optimización de costos logísticos y de transporte mediante una red inteligente."},
         }
 
 # Inicializar inversiones anuales en session_state si no existe
@@ -407,7 +471,8 @@ if 'benefit_params' not in st.session_state:
         for module in st.session_state.module_options:
             st.session_state.benefit_params[module] = {}
             for aspect in st.session_state.module_profiles.get(module, []):
-                min_val, max_val = st.session_state.aspect_ranges[aspect]
+                cfg = st.session_state.aspect_ranges[aspect]
+                min_val, max_val = cfg["min"], cfg["max"]
                 st.session_state.benefit_params[module][aspect] = {"min": min_val + 1, "max": max_val - 1}
 
 if 'annual_investments' not in st.session_state:
@@ -647,7 +712,8 @@ with config_tab:
                                 st.session_state.module_profiles[module] = selected_aspects
                                 for aspect in selected_aspects:
                                     if aspect not in st.session_state.benefit_params[module]:
-                                        min_v, max_v = aspect_ranges[aspect]
+                                        cfg = aspect_ranges[aspect]
+                                        min_v, max_v = cfg["min"], cfg["max"]
                                         st.session_state.benefit_params[module][aspect] = {"min": min_v + 1, "max": max_v - 1}
                                 for a in list(st.session_state.benefit_params[module].keys()):
                                     if a not in selected_aspects:
@@ -676,7 +742,8 @@ with config_tab:
             if module in st.session_state.module_profiles:
                 for aspect in st.session_state.module_profiles[module]:
                     col_min, col_max = st.columns(2)
-                    min_val, max_val = aspect_ranges[aspect]
+                    cfg = aspect_ranges[aspect]
+                    min_val, max_val = cfg["min"], cfg["max"]
                     with col_min:
                         current_min = st.session_state.benefit_params[module][aspect]["min"]
                         new_min = st.number_input(f"Min % {module} - {aspect}", float(min_val), float(max_val), float(current_min), key=f"min_{module}_{aspect}")
@@ -689,72 +756,88 @@ with config_tab:
 
     with config_subtab3:
         st.subheader("Configuración de Aspectos e Impacto")
-        st.info("Configura los rangos de impacto (min/max) para cada aspecto de negocio.")
+        st.info("Administra el catálogo maestro de aspectos de valor. Configura sus rangos esperados de impacto y su justificación financiera oficial.")
         
-        # (El manejo de aspectos se realiza en el bloque de abajo dinámicamente)
-        
-        # Agregar nuevo aspecto
-        st.write("### Agregar nuevo aspecto")
-        col_new_name, col_new_min, col_new_max, col_add_btn = st.columns([2, 1.5, 1.5, 1])
-        with col_new_name:
-            new_aspect_name = st.text_input("Nombre del aspecto", key="new_aspect_name")
-        with col_new_min:
-            new_aspect_min = st.number_input("Rango mín (%)", min_value=0.0, max_value=100.0, value=0.0, key="new_aspect_min")
-        with col_new_max:
-            new_aspect_max = st.number_input("Rango máx (%)", min_value=0.0, max_value=100.0, value=20.0, key="new_aspect_max")
-        with col_add_btn:
-            if st.button("Agregar", key="btn_add_aspect"):
-                if new_aspect_name and new_aspect_name not in st.session_state.aspect_ranges:
-                    if new_aspect_max > new_aspect_min:
-                        st.session_state.aspect_ranges[new_aspect_name] = (new_aspect_min, new_aspect_max)
-                        st.success(f"Aspecto '{new_aspect_name}' agregado ({new_aspect_min}-{new_aspect_max}%)")
-                        persist_state()
-                        st.rerun()
+        # Agregar nuevo aspecto (Oculto en expander por defecto para limpieza visual)
+        with st.expander("➕ Formulario: Crear Nuevo Aspecto de Valor", expanded=False):
+            st.write("Registra un nuevo aspecto para asociarlo dinámicamente a tus módulos de negocio en la aplicación.")
+            col_new_name, col_new_min, col_new_max = st.columns([2, 1, 1])
+            with col_new_name:
+                new_aspect_name = st.text_input("Identificador Técnico (e.g. 'marketing_roi')", key="new_aspect_name")
+            with col_new_min:
+                new_aspect_min = st.number_input("Escenario Conservador (%)", min_value=0.0, max_value=100.0, value=0.0, key="new_aspect_min")
+            with col_new_max:
+                new_aspect_max = st.number_input("Escenario Optimista (%)", min_value=0.0, max_value=100.0, value=20.0, key="new_aspect_max")
+            
+            new_aspect_rat = st.text_area("Justificación Comercial / Racional Financiero", key="new_aspect_rat", placeholder="Describe argumentativamente por qué y cómo este aspecto genera un retorno de inversión. Esta descripción alimentará los reportes ejecutivos generados.", height=80)
+            
+            # Contenedor para alinear el botón
+            col_esp, col_add_btn = st.columns([3, 1])
+            with col_add_btn:
+                if st.button("Guardar en Catálogo", key="btn_add_aspect", type="primary", use_container_width=True):
+                    if new_aspect_name and new_aspect_name not in st.session_state.aspect_ranges:
+                        if new_aspect_max > new_aspect_min:
+                            st.session_state.aspect_ranges[new_aspect_name] = {"min": new_aspect_min, "max": new_aspect_max, "rationale": new_aspect_rat}
+                            st.success(f"Aspecto '{new_aspect_name}' integrado.")
+                            persist_state()
+                            st.rerun()
+                        else:
+                            st.error("El esquema optimista debe ser > al conservador.")
                     else:
-                        st.error("El máximo debe ser mayor que el mínimo")
-                else:
-                    st.error("Nombre inválido o ya existe")
+                        st.error("Nombre inválido o el aspecto ya existe.")
         
+        st.write("")
         # Listar y editar aspectos
-        st.write("### Aspectos existentes")
-        for aspect_name, (min_val, max_val) in list(st.session_state.aspect_ranges.items()):
-            col_name, col_min, col_max, col_actions = st.columns([2, 1.5, 1.5, 1])
+        st.markdown("### 📋 Catálogo Activo de Indicadores de Retorno")
+        
+        aspect_items = list(st.session_state.aspect_ranges.items())
+        cols_per_row = 2
+        for i in range(0, len(aspect_items), cols_per_row):
+            row_aspects = aspect_items[i:i + cols_per_row]
+            cols = st.columns(cols_per_row)
             
-            with col_name:
-                st.text(aspect_name)
+            for j, (aspect_name, val_dict) in enumerate(row_aspects):
+                with cols[j]:
+                    min_val = float(val_dict["min"])
+                    max_val = float(val_dict["max"])
+                    rat_val = val_dict.get("rationale", "")
+                    
+                    with st.container(border=True):
+                        # Cabecera de Tarjeta
+                        c_title, c_del = st.columns([5, 1.5])
+                        with c_title:
+                            st.markdown(f"<h5 style='margin-top: 5px; margin-bottom: 10px; color: var(--apple-blue); letter-spacing: 0.5px;'>🔹 {str(aspect_name).replace('_', ' ').title()}</h5>", unsafe_allow_html=True)
+                        with c_del:
+                            if st.button("🗑️ Borrar", key=f"del_aspect_{aspect_name}", help="Eliminar este aspecto para siempre", use_container_width=True):
+                                modules_using = [m for m, aspects in st.session_state.module_profiles.items() if aspect_name in aspects]
+                                if modules_using:
+                                    st.error("En uso.")
+                                else:
+                                    del st.session_state.aspect_ranges[aspect_name]
+                                    st.rerun()
+                        
+                        # Cuerpo de Tarjeta: Inputs 50/50 y luego el Texto abajo
+                        c_pmin, c_pmax = st.columns(2)
+                        with c_pmin:
+                            new_min = st.number_input(f"Piso (%)", min_value=0.0, max_value=100.0, value=min_val, key=f"emin_{aspect_name}")
+                        with c_pmax:
+                            new_max = st.number_input(f"Techo (%)", min_value=0.0, max_value=100.0, value=max_val, key=f"emax_{aspect_name}")
+                        
+                        st.markdown("<div style='font-size:0.8rem; margin-bottom: 5px; color: var(--apple-text-dim);'>Justificación Funcional</div>", unsafe_allow_html=True)
+                        new_rat = st.text_area("Racional", value=rat_val, key=f"erat_{aspect_name}", height=68, label_visibility="collapsed", placeholder="Describe la métrica...")
+                        
+                    # Sincronización Automática
+                    if (new_min, new_max, new_rat) != (min_val, max_val, rat_val):
+                        if new_max > new_min:
+                            st.session_state.aspect_ranges[aspect_name] = {"min": new_min, "max": new_max, "rationale": new_rat}
+                            for module, aspects in st.session_state.module_profiles.items():
+                                if aspect_name in aspects:
+                                    st.session_state.benefit_params[module][aspect_name]["min"] = min(st.session_state.benefit_params[module][aspect_name]["min"], new_max - 0.1) # Safe lock
+                                    st.session_state.benefit_params[module][aspect_name]["max"] = min(st.session_state.benefit_params[module][aspect_name]["max"], new_max - 0.1)
+                        else:
+                            st.error(f"Techo > Piso en {aspect_name}")
             
-            with col_min:
-                new_min = st.number_input(f"Min {aspect_name}", min_value=0.0, max_value=100.0, value=float(min_val), key=f"emin_{aspect_name}")
-            
-            with col_max:
-                new_max = st.number_input(f"Max {aspect_name}", min_value=0.0, max_value=100.0, value=float(max_val), key=f"emax_{aspect_name}")
-            
-            with col_actions:
-                if st.button("🗑️", key=f"del_aspect_{aspect_name}"):
-                    # Verificar si hay módulos usando este aspecto
-                    modules_using = [m for m, aspects in st.session_state.module_profiles.items() if aspect_name in aspects]
-                    if modules_using:
-                        st.error(f"No puedes eliminar '{aspect_name}': usado por {', '.join(modules_using)}")
-                    else:
-                        del st.session_state.aspect_ranges[aspect_name]
-                        st.success(f"Aspecto '{aspect_name}' eliminado")
-                        st.rerun()
-            
-            # Actualizar rango si cambió
-            if (new_min, new_max) != (min_val, max_val):
-                if new_max > new_min:
-                    st.session_state.aspect_ranges[aspect_name] = (new_min, new_max)
-                    # Sincronizar con benefit_params de todos los módulos que usan este aspecto
-                    for module, aspects in st.session_state.module_profiles.items():
-                        if aspect_name in aspects:
-                            st.session_state.benefit_params[module][aspect_name] = {
-                                "min": new_min + 1,
-                                "max": new_max - 1
-                            }
-                else:
-                    st.error(f"Max debe ser > Min para {aspect_name}")
-            
-            st.divider()
+        st.write("")
         
         if st.button("💾 Guardar Configuración en Base de Datos", type="primary", use_container_width=True):
             persist_state()

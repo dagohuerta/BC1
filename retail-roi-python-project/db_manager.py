@@ -47,7 +47,14 @@ class DatabaseManager:
         cursor.execute(f"CREATE TABLE IF NOT EXISTS module_aspects (id INTEGER PRIMARY KEY {pk_auto if not is_mysql else 'AUTO_INCREMENT'}, module_name VARCHAR(255), aspect_key VARCHAR(100))")
         cursor.execute(f"CREATE TABLE IF NOT EXISTS benefit_params (id INTEGER PRIMARY KEY {pk_auto if not is_mysql else 'AUTO_INCREMENT'}, module_name VARCHAR(255), aspect_key VARCHAR(100), min_val FLOAT, max_val FLOAT)")
         cursor.execute(f"CREATE TABLE IF NOT EXISTS annual_investments (year_val INTEGER PRIMARY KEY, software FLOAT, impl FLOAT, extra FLOAT)")
-        cursor.execute(f"CREATE TABLE IF NOT EXISTS aspect_ranges (aspect_key VARCHAR(100) PRIMARY KEY, min_val FLOAT, max_val FLOAT)")
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS aspect_ranges (aspect_key VARCHAR(100) PRIMARY KEY, min_val FLOAT, max_val FLOAT, rationale TEXT)")
+        
+        # Migración de columna rationale
+        try:
+            cursor.execute("ALTER TABLE aspect_ranges ADD COLUMN rationale TEXT")
+        except Exception:
+            pass # La columna ya existe
+
         
         # 2. Exercise Persistence Tables (ROI Runs)
         cursor.execute(f"""
@@ -123,9 +130,15 @@ class DatabaseManager:
     def load_aspect_ranges(self):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT aspect_key, min_val, max_val FROM aspect_ranges")
+        try:
+            cursor.execute("SELECT aspect_key, min_val, max_val, rationale FROM aspect_ranges")
+        except Exception:
+            cursor.execute("SELECT aspect_key, min_val, max_val FROM aspect_ranges")
         rows = cursor.fetchall()
-        ranges = {r[0]: (r[1], r[2]) for r in rows}
+        ranges = {}
+        for r in rows:
+            rat_text = r[3] if len(r) > 3 and r[3] is not None else ""
+            ranges[r[0]] = {"min": r[1], "max": r[2], "rationale": rat_text}
         conn.close()
         return ranges
 
@@ -152,8 +165,11 @@ class DatabaseManager:
                 cursor.execute("INSERT INTO annual_investments (year_val, software, impl, extra) VALUES (%s, %s, %s, %s)" if self.db_type=="mysql" else "INSERT INTO annual_investments (year_val, software, impl, extra) VALUES (?, ?, ?, ?)", (year, vals['software'], vals['impl'], vals['extra']))
 
             cursor.execute("DELETE FROM aspect_ranges")
-            for key, (min_v, max_v) in aspect_ranges.items():
-                cursor.execute("INSERT INTO aspect_ranges (aspect_key, min_val, max_val) VALUES (%s, %s, %s)" if self.db_type=="mysql" else "INSERT INTO aspect_ranges (aspect_key, min_val, max_val) VALUES (?, ?, ?)", (key, min_v, max_v))
+            for key, val in aspect_ranges.items():
+                min_v = val["min"]
+                max_v = val["max"]
+                rat = val.get("rationale", "")
+                cursor.execute("INSERT INTO aspect_ranges (aspect_key, min_val, max_val, rationale) VALUES (%s, %s, %s, %s)" if self.db_type=="mysql" else "INSERT INTO aspect_ranges (aspect_key, min_val, max_val, rationale) VALUES (?, ?, ?, ?)", (key, min_v, max_v, rat))
             
             conn.commit()
         except Exception as e:
